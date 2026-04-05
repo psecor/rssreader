@@ -1,0 +1,87 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int          @id @default(autoincrement())
+  googleId     String       @unique
+  email        String       @unique
+  name         String?
+  refreshToken String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  categories   Category[]
+  feeds        Feed[]
+  readStatus   ReadStatus[]
+}
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feeds     Feed[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, name])
+}
+
+model Feed {
+  id             Int        @id @default(autoincrement())
+  title          String
+  url            String
+  description    String?
+  categoryId     Int
+  userId         Int
+  lastFetchedAt  DateTime?
+  lastFetchError String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  category       Category   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items          FeedItem[]
+
+  @@unique([userId, url])
+}
+
+model FeedItem {
+  id          Int          @id @default(autoincrement())
+  feedId      Int
+  title       String
+  link        String
+  description String?
+  contentHtml String?
+  author      String?
+  pubDate     DateTime?
+  guid        String
+  thumbnail   String?
+  createdAt   DateTime     @default(now())
+  feed        Feed         @relation(fields: [feedId], references: [id], onDelete: Cascade)
+  readStatus  ReadStatus[]
+
+  @@unique([feedId, guid])
+  @@index([feedId, pubDate])
+}
+
+model ReadStatus {
+  id         Int       @id @default(autoincrement())
+  feedItemId Int
+  userId     Int
+  isRead     Boolean   @default(false)
+  readAt     DateTime?
+  openedAt   DateTime?
+  feedItem   FeedItem  @relation(fields: [feedItemId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([feedItemId, userId])
+  @@index([userId, isRead])
+}
