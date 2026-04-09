@@ -52,15 +52,17 @@ app.use(
       createTableIfMissing: true,
       ttl: 90 * 24 * 60 * 60, // 90 days in seconds (must match cookie maxAge)
     }),
+    name: 'rssreader.sid',
     secret: process.env.SESSION_SECRET || 'your-secret-key-change-this',
     resave: false,
     saveUninitialized: false,
     rolling: true, // Reset expiration on every request
     cookie: {
+      path: '/rssreader',
       maxAge: 90 * 24 * 60 * 60 * 1000, // 90 days in milliseconds
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax', // Use 'lax' since frontend and backend are on same domain
+      sameSite: 'lax',
     },
   })
 );

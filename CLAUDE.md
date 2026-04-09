@@ -215,7 +215,7 @@ sudo journalctl -u rss-reader -f
 
 - Only `secorp@gmail.com` can log in (hard-coded check in `backend/src/middleware/passport.ts`)
 - Authorized redirect URI in Google Console: `https://secorp.net/rssreader/auth/google/callback`
-- Sessions: 90-day rolling TTL, stored in PostgreSQL `session` table
+- Sessions: 90-day rolling TTL, stored in PostgreSQL `session` table, cookie named `rssreader.sid` scoped to `/rssreader` path (avoids conflicts with other services on secorp.net)
 - If you change `GOOGLE_CALLBACK_URL` in `.env`, you must also update Google Console AND restart the backend
 
 ---

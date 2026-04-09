@@ -839,6 +839,7 @@ body {
 @media (max-width: 767px) {
   .hamburger-menu {
     display: flex;
+    margin-right: 0.5rem;
   }
 
   /* Mobile Sidebar */
@@ -885,18 +886,26 @@ body {
 
   /* Responsive Top-bar */
   .top-bar {
-    flex-wrap: wrap;
-    padding: 0.75rem 1rem;
+    flex-wrap: nowrap;
+    padding: 0.5rem 0.75rem;
+    gap: 0.5rem;
   }
 
   .search-section {
-    order: 2;
-    width: 100%;
-    margin-top: 0.75rem;
+    flex: 1;
+    min-width: 0;
+    gap: 0.5rem;
   }
 
   .search-input {
     max-width: 100%;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
+  }
+
+  .unread-filter {
+    font-size: 0.8rem;
+    white-space: nowrap;
   }
 
   .reading-stats {
@@ -904,8 +913,8 @@ body {
   }
 
   .user-menu {
-    order: 1;
-    margin-left: auto;
+    margin-left: 0;
+    gap: 0.5rem;
   }
 
   .user-name {
@@ -953,18 +962,28 @@ body {
 
   /* Feed Header Mobile */
   .feed-header {
-    padding: 1rem;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
   }
 
   .feed-header h2 {
-    font-size: 1.2rem;
+    font-size: 1rem;
+  }
+
+  .feed-header > div {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+    min-width: 0;
   }
 
   .mark-all-read-button {
-    width: 100%;
+    white-space: nowrap;
+    font-size: 0.8rem;
+    padding: 0.35rem 0.75rem;
   }
 
   /* Index View Mobile */
@@ -987,14 +1006,19 @@ body {
 
 /* Very small mobile phones */
 @media (max-width: 479px) {
-  .top-bar {
-    padding: 0.5rem 0.75rem;
+  .search-input {
+    min-width: 0;
+  }
+
+  .unread-filter span,
+  .unread-filter {
+    font-size: 0.75rem;
   }
 
   .add-button,
   .logout-button {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.85rem;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.8rem;
   }
 
   /* Stack layout on very small screens */
