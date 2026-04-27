@@ -58,7 +58,7 @@ app.use(
     saveUninitialized: false,
     rolling: true, // Reset expiration on every request
     cookie: {
-      path: '/rssreader',
+      path: '/',
       maxAge: 90 * 24 * 60 * 60 * 1000, // 90 days in milliseconds
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

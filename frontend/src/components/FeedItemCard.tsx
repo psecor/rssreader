@@ -1,4 +1,5 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { FeedItem } from '../types';
 import { readStatusApi } from '../services/api';
 
@@ -15,12 +16,17 @@ const FeedItemCard: React.FC<FeedItemCardProps> = ({ item, onUpdate }) => {
   const [swipeX, setSwipeX] = useState(0);
   const [swiping, setSwiping] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [showLightbox, setShowLightbox] = useState(false);
+  const lightboxBodyRef = useRef<HTMLDivElement>(null);
 
-  const handleClick = async () => {
+  const handleClick = () => {
     if (swiping) return;
-    // Open link in new tab immediately
+    setShowLightbox(true);
+  };
+
+  const handleOpenArticle = async () => {
     window.open(item.link, '_blank', 'noopener,noreferrer');
-    // Record open (and mark as read if not already)
+    setShowLightbox(false);
     try {
       await readStatusApi.markRead({ feedItemIds: [item.id], opened: true });
       if (!item.isRead) onUpdate();
@@ -28,6 +34,39 @@ const FeedItemCard: React.FC<FeedItemCardProps> = ({ item, onUpdate }) => {
       console.error('Error marking item as read:', error);
     }
   };
+
+  const handleCloseLightbox = async () => {
+    setShowLightbox(false);
+    if (!item.isRead) {
+      try {
+        await readStatusApi.markRead({ feedItemIds: [item.id] });
+        onUpdate();
+      } catch (error) {
+        console.error('Error marking item as read:', error);
+      }
+    }
+  };
+
+  const handleKeepUnread = () => setShowLightbox(false);
+
+  // Make links inside rendered HTML open in new tabs
+  useEffect(() => {
+    if (!showLightbox || !lightboxBodyRef.current) return;
+    const anchors = lightboxBodyRef.current.querySelectorAll('a');
+    anchors.forEach(a => {
+      a.setAttribute('target', '_blank');
+      a.setAttribute('rel', 'noopener noreferrer');
+    });
+  }, [showLightbox]);
+
+  // Close on Escape (marks as read)
+  useEffect(() => {
+    if (!showLightbox) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') handleCloseLightbox(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showLightbox]);
 
   const handleToggleRead = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -95,6 +134,7 @@ const FeedItemCard: React.FC<FeedItemCardProps> = ({ item, onUpdate }) => {
   const isThresholdMet = swipeX >= SWIPE_THRESHOLD;
 
   return (
+    <>
     <div
       className={`feed-item-card ${item.isRead ? 'read' : 'unread'} ${confirming ? 'swipe-confirming' : ''}`}
       style={{ position: 'relative', overflow: 'hidden' }}
@@ -159,6 +199,55 @@ const FeedItemCard: React.FC<FeedItemCardProps> = ({ item, onUpdate }) => {
         </div>
       </div>
     </div>
+
+    {showLightbox && ReactDOM.createPortal(
+      <div className="lightbox-overlay" onClick={handleCloseLightbox}>
+        <div className="lightbox-panel" onClick={e => e.stopPropagation()}>
+          <div className="lightbox-header">
+            <div className="lightbox-meta">
+              {item.feed?.category && (
+                <span className="category-pill">{item.feed.category.name}</span>
+              )}
+              {item.feed && <span className="lightbox-source">{item.feed.title}</span>}
+              {item.author && <span className="lightbox-author">· {item.author}</span>}
+              {item.pubDate && <span className="lightbox-date">· {formatDate(item.pubDate)}</span>}
+            </div>
+            <button className="lightbox-close" onClick={handleCloseLightbox} title="Close (Esc)">×</button>
+          </div>
+
+          <h2 className="lightbox-title">{item.title}</h2>
+
+          <div className="lightbox-body" ref={lightboxBodyRef}>
+            {item.thumbnail && (
+              <img className="lightbox-thumbnail" src={item.thumbnail} alt="" />
+            )}
+            {item.contentHtml ? (
+              <div
+                className="lightbox-html-content"
+                dangerouslySetInnerHTML={{ __html: item.contentHtml }}
+              />
+            ) : item.description ? (
+              <p className="lightbox-description">{item.description}</p>
+            ) : (
+              <p className="lightbox-empty">No preview content available for this article.</p>
+            )}
+          </div>
+
+          <div className="lightbox-actions">
+            {!item.isRead && (
+              <button className="lightbox-btn-secondary" onClick={handleKeepUnread}>
+                Keep as unread
+              </button>
+            )}
+            <button className="lightbox-btn-primary" onClick={handleOpenArticle}>
+              Open Article →
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
+    </>
   );
 };
 
