@@ -1,11 +1,12 @@
 ---
 project: rssreader
 status: production
-status_description: "Live at secorp.net/rssreader; single-user (secorp@gmail.com); feature-stable, occasional small adds."
-last_updated: 2026-04-25
+status_description: "Live at secorp.net/rssreader; single-user (secorp@gmail.com); feature-stable with occasional small adds (recent: in-app article lightbox)."
+last_updated: 2026-04-27
 last_updated_by:
   - agent:claude-opus-4-7
   - human:secorp
+  - agent:sweeper-claude-opus-4-7
 wiki_schema_version: 1
 ---
 
@@ -216,6 +217,10 @@ No webhooks, no socket.io, no external integrations beyond Google OAuth and inbo
 
 9. **Reading stats count `openedAt`, not `isRead`** — see Data & Schema. Mark-as-read does not increment the visible reading stats; opening the article does.
 
+10. **Session cookie path must match the subpath** — the session cookie is scoped to `/rssreader` (set in `backend/src/index.ts`). If you change the deployment subpath or remove the `path` option, sessions will leak across other apps on `secorp.net` or fail to be sent on `/rssreader/*` requests. This was a real bug fixed in 2026-04.
+
+11. **Article lightbox and mobile viewport** — `FeedItemCard` includes an in-app lightbox for opening articles without leaving the reader. On mobile, the lightbox interacts with viewport scrolling: `App.css` contains specific rules to prevent body-scroll-lock issues and keep the lightbox content scrollable. Touch refactors here carefully — desktop testing alone won't catch regressions.
+
 ## Related
 
 **Other projects:**
@@ -225,5 +230,13 @@ No webhooks, no socket.io, no external integrations beyond Google OAuth and inbo
 **Topics:** none yet.
 
 <!-- agent-wiki:backlinks-start -->
-_No incoming links yet._
+- [agent-wiki](../agent-wiki/AGENTS.md) — Status, Related
+- [colonization-cargo-tracker](../colonization-cargo-tracker/AGENTS.md) — Related
+- [donno-site](../donno-site/AGENTS.md) — Related
+- [indicators-of-econ](../indicators-of-econ/AGENTS.md) — Related
+- [interesting-opportunity-collator](../interesting-opportunity-collator/AGENTS.md) — Related
+- [meeting-slack-app](../meeting-slack-app/AGENTS.md) — Related
+- [mommo-site](../mommo-site/AGENTS.md) — Related
+- [twilio-talker](../twilio-talker/AGENTS.md) — Related
+- [typing-lag](../typing-lag/AGENTS.md) — Related
 <!-- agent-wiki:backlinks-end -->
