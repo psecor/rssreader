@@ -230,7 +230,6 @@ No webhooks, no socket.io, no external integrations beyond Google OAuth and inbo
 **Topics:** none yet.
 
 <!-- agent-wiki:backlinks-start -->
-- [agent-wiki](../agent-wiki/AGENTS.md) — Status, Related
 - [colonization-cargo-tracker](../colonization-cargo-tracker/AGENTS.md) — Related
 - [donno-site](../donno-site/AGENTS.md) — Related
 - [indicators-of-econ](../indicators-of-econ/AGENTS.md) — Related

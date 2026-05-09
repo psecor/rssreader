@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
+import DOMPurify from 'dompurify';
 import { FeedItem } from '../types';
 import { readStatusApi } from '../services/api';
 
@@ -130,6 +131,11 @@ const FeedItemCard: React.FC<FeedItemCardProps> = ({ item, onUpdate }) => {
     return date.toLocaleDateString();
   };
 
+  const sanitizedHtml = useMemo(
+    () => item.contentHtml ? DOMPurify.sanitize(item.contentHtml, { USE_PROFILES: { html: true } }) : '',
+    [item.contentHtml]
+  );
+
   const swipeProgress = Math.min(swipeX / SWIPE_THRESHOLD, 1);
   const isThresholdMet = swipeX >= SWIPE_THRESHOLD;
 
@@ -224,7 +230,7 @@ const FeedItemCard: React.FC<FeedItemCardProps> = ({ item, onUpdate }) => {
             {item.contentHtml ? (
               <div
                 className="lightbox-html-content"
-                dangerouslySetInnerHTML={{ __html: item.contentHtml }}
+                dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
               />
             ) : item.description ? (
               <p className="lightbox-description">{item.description}</p>
