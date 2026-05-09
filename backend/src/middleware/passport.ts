@@ -4,7 +4,24 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+function getAllowedEmails(): Set<string> {
+  const raw = process.env.ALLOWED_EMAILS;
+  if (!raw) {
+    throw new Error(
+      'ALLOWED_EMAILS must be set — comma-separated list of Google account emails permitted to log in.',
+    );
+  }
+  return new Set(
+    raw
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => s.length > 0),
+  );
+}
+
 export function configurePassport() {
+  const allowedEmails = getAllowedEmails();
+
   passport.use(
     new GoogleStrategy(
       {
@@ -20,8 +37,7 @@ export function configurePassport() {
             return done(new Error('No email found in Google profile'));
           }
 
-          // Restrict to secorp@gmail.com
-          if (email !== 'secorp@gmail.com') {
+          if (!allowedEmails.has(email.toLowerCase())) {
             return done(new Error('Unauthorized email address'));
           }
 

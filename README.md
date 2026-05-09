@@ -1,98 +1,79 @@
-# RSS Reader
+# rssreader
 
-A personal RSS reader web application with Google OAuth authentication. Hosted at **https://secorp.net/rssreader**.
+A self-hosted RSS reader web app with Google OAuth authentication. Aggregates RSS feeds, tracks read/unread per article, and exposes a clean reading interface with mobile swipe gestures and a per-user reading history.
 
-## Features
+This repo holds:
 
-- **Google OAuth 2.0** — restricted to secorp@gmail.com
-- **Feed management** — organize feeds into categories, add/edit/delete feeds and categories
-- **Automatic updates** — all feeds refresh every 15 minutes via background scheduler
-- **Compact article list** — thumbnails, author, date, two-column layout at wide screens
-- **Category pills** — each article shows which category it's from
-- **Read/unread tracking** — per-article status with visual distinction
-- **Swipe to read (mobile)** — swipe right on an article to mark as read
-- **Unread badges** — sidebar shows unread counts per feed and per category
-- **Search** — case-insensitive search across title and description
-- **Unread filter** — toggle to show only unread articles
-- **Scroll preservation** — position maintained when articles are removed in unread-only mode
-- **Index view** — dashboard showing unread counts across all feeds
-- **History view** — searchable archive of all articles you've opened
-- **Reading stats** — always-visible top-bar stats: articles opened today / this week / this month / all time
-- **Mobile-friendly** — hamburger menu, slide-in sidebar, touch-optimized layout
-- **URL navigation** — all views are bookmarkable via URL parameters
-- **RSS favicon** — orange RSS icon
+- The **backend** — Express + TypeScript, Prisma + PostgreSQL, Passport (Google OAuth), node-cron scheduler, rss-parser
+- The **frontend** — React 18 + TypeScript, React Router v6
+- A **deploy bundle** — `setup.sh`, `deploy.sh`, an Apache vhost template, and `DEPLOYMENT.md`
 
-## Tech Stack
+It's intended for a single user or a small allowlist of users (e.g. a household). Authentication is Google OAuth; the allowlist is configured via the `ALLOWED_EMAILS` env var.
 
-**Backend:** Express + TypeScript, Prisma ORM, PostgreSQL, Passport.js, node-cron, rss-parser
+## Status
 
-**Frontend:** React 18 + TypeScript, React Router v6, Axios, CSS3
+Feature-stable. Recent work has been small UX polish (in-app article lightbox) and security hardening (DOMPurify XSS sanitization for rendered RSS HTML).
 
-## URL Parameters
+## Prerequisites
 
-The app state is reflected in the URL and can be deep-linked:
+- **Node.js** 20+
+- **PostgreSQL** 14+
+- **Google OAuth client** (Authorized redirect URI must match `GOOGLE_CALLBACK_URL`)
+- **Apache** (or another reverse proxy with TLS) — only for production serving
 
-| Parameter | Values | Description |
-|-----------|--------|-------------|
-| `view` | `all`, `feed`, `category`, `index`, `history` | Active view |
-| `feedId` | number | Selected feed (when view=feed) |
-| `categoryId` | number | Selected category (when view=category) |
-| `unreadOnly` | `true` | Show only unread articles |
-| `search` | string | Search query |
+## Quick start (local dev)
 
-## API Endpoints
+```bash
+# 1. Clone, then create the local Postgres role + database:
+DB_USER=rssreader DB_PASSWORD="$(openssl rand -hex 16)" ./setup.sh
 
-### Authentication
-- `GET /auth/google` — Start OAuth flow
-- `GET /auth/google/callback` — OAuth callback
-- `POST /auth/logout` — Logout
-- `GET /auth/me` — Get current user
+# 2. Copy and fill in the backend env:
+cp backend/.env.example backend/.env
+#    Set DATABASE_URL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+#        GOOGLE_CALLBACK_URL, SESSION_SECRET, ALLOWED_EMAILS
 
-### Categories
-- `GET /api/categories` — List all with unread counts
-- `GET /api/categories/index` — Dashboard index data
-- `POST /api/categories` — Create `{ name }`
-- `PUT /api/categories/:id` — Update `{ name }`
-- `DELETE /api/categories/:id` — Delete (cascades to feeds and items)
+# 3. Re-run setup to install deps + run migrations:
+./setup.sh
 
-### Feeds
-- `GET /api/feeds` — List feeds (optional `?categoryId=`)
-- `GET /api/feeds/:id` — Get single feed
-- `POST /api/feeds` — Create `{ url, categoryId, title? }`
-- `PUT /api/feeds/:id` — Update `{ title?, categoryId? }`
-- `DELETE /api/feeds/:id` — Delete
-- `POST /api/feeds/:id/refresh` — Manually trigger a fetch
+# 4. Start backend and frontend:
+cd backend && npm run dev          # :3001
+cd frontend && npm start            # :3000
+```
 
-### Feed Items
-- `GET /api/feed-items` — Get articles
-  - `?feedId=` / `?categoryId=` — filter by source
-  - `?isRead=true/false` — filter by read status
-  - `?search=` — search title and description
-  - `?limit=50&offset=0` — pagination
-- `GET /api/feed-items/:id` — Get single article
+Open <http://localhost:3000> and sign in with one of the allowlisted Google accounts.
 
-### Read Status
-- `POST /api/read-status/mark-read` — `{ feedItemIds: number[], opened?: boolean }`
-  - Pass `opened: true` when user clicks to open (records `openedAt` for stats)
-- `POST /api/read-status/mark-unread` — `{ feedItemId: number }`
-- `POST /api/read-status/mark-all-read` — `{ feedId? } | { categoryId? }`
+## Production deploy
 
-### History
-- `GET /api/history` — Paginated read history `?search=&limit=100&offset=0`
-- `GET /api/history/stats` — Reading stats by time period:
-  ```json
-  { "today": 3, "week": 21, "month": 84, "allTime": 1203,
-    "todayRead": 5, "weekRead": 30, "monthRead": 100, "allTimeRead": 1500 }
-  ```
-  (`today/week/month/allTime` = opened; `*Read` = marked read by any means)
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the full Apache + systemd walkthrough.
 
-### Health
-- `GET /health` — Returns `{ "status": "ok" }`
+In short:
 
-## Development Notes
+```bash
+PROJECT_DIR="$(pwd)" SERVICE_USER=$USER \
+FRONTEND_URL=https://example.com:3444 BACKEND_PORT=3003 \
+  ./deploy.sh
+```
 
-- Feed items are deduplicated by `guid` field (unique per feed)
-- `ReadStatus.openedAt` is only set when articles are opened via click, not when toggled read
-- Sessions stored in PostgreSQL (connect-pg-simple), 90-day rolling TTL
-- Prisma schema changes: use raw SQL + `npx prisma generate` (avoid `migrate dev` in this env)
-- See `CLAUDE.md` for agent-specific guidance including common pitfalls
+The Apache vhost template at `rss-reader-apache.conf` has placeholders (`YOUR_DOMAIN`, `YOUR_PORT`, `YOUR_CERT_PATH`, `BACKEND_PORT`) that need to be filled in before the first deploy.
+
+## Configuration
+
+All backend configuration is via `backend/.env`. See `backend/.env.example` for the canonical list. Notable:
+
+| Var | Required | Purpose |
+|---|---|---|
+| `DATABASE_URL` | yes | PostgreSQL connection string |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | yes | OAuth credentials |
+| `GOOGLE_CALLBACK_URL` | yes | Must match an Authorized redirect URI in Google Console |
+| `SESSION_SECRET` | yes | Random string; rotating it logs everyone out |
+| `FRONTEND_URL` | yes | Where the app redirects after OAuth |
+| `ALLOWED_EMAILS` | yes | Comma-separated allowlist of Google account emails |
+| `PORT` | no (default 3001) | Backend listen port |
+
+## Repo layout
+
+See [AGENTS.md](AGENTS.md) for an annotated tree, the architecture writeup, deployment topology, and the list of operational gotchas (subpath routing, session-cookie scoping, build-permission traps, etc.).
+
+## License
+
+[MIT](LICENSE)

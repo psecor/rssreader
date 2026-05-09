@@ -1,8 +1,8 @@
 ---
 project: rssreader
 status: production
-status_description: "Live at secorp.net/rssreader; single-user (secorp@gmail.com); feature-stable with occasional small adds (recent: in-app article lightbox)."
-last_updated: 2026-04-27
+status_description: "Self-hosted Google-OAuth-gated RSS reader for a small allowlist of users; feature-stable with occasional small adds (recent: in-app article lightbox, DOMPurify XSS hardening)."
+last_updated: 2026-05-09
 last_updated_by:
   - agent:claude-opus-4-7
   - human:secorp
@@ -14,22 +14,22 @@ wiki_schema_version: 1
 
 ## What This Is
 
-A personal RSS reader web application for a single user (`secorp@gmail.com`). Aggregates RSS feeds, tracks read/unread status, and provides a clean reading interface with mobile swipe-to-read. Hosted at **https://secorp.net/rssreader**.
+A self-hosted RSS reader web application. Aggregates RSS feeds, tracks read/unread status per user, and provides a clean reading interface with mobile swipe-to-read. Authentication is Google OAuth restricted to a configurable allowlist (`ALLOWED_EMAILS`), so it's well-suited to a single user or a small group (e.g. a household).
 
 ## Status
 
-**Production.** Backend, frontend, scheduler, and OAuth all implemented and live. Schema migrations done via raw SQL or `prisma db push`, not `prisma migrate dev`. No automated tests. Active maintenance: occasional small adds.
+**Production-ready.** Backend, frontend, scheduler, and OAuth all implemented. Schema migrations done via raw SQL or `prisma db push`, not `prisma migrate dev` (the latter is interactive and doesn't fit non-TTY deploy contexts). No automated tests yet — manual smoke testing only.
 
 ## Repository Layout
 
 ```
-~/termag/projects/rssreader/        (canonical; ~/src/rssreader is a symlink to here)
+rssreader/
 ├── backend/                        Node.js/Express API server
 │   ├── src/
 │   │   ├── index.ts               Entry: middleware, route registration
 │   │   ├── middleware/
 │   │   │   ├── auth.ts            ensureAuthenticated
-│   │   │   └── passport.ts        Google OAuth (restricted to secorp@gmail.com)
+│   │   │   └── passport.ts        Google OAuth (allowlisted via ALLOWED_EMAILS)
 │   │   ├── routes/
 │   │   │   ├── auth.ts            /auth/google, /auth/google/callback, /auth/me, /auth/logout
 │   │   │   ├── categories.ts      /api/categories CRUD + /api/categories/index
@@ -42,8 +42,8 @@ A personal RSS reader web application for a single user (`secorp@gmail.com`). Ag
 │   │   │   └── feedSchedulerService.ts  node-cron every 15 minutes
 │   │   └── types/                 express.d.ts, connect-pg-simple.d.ts
 │   ├── prisma/schema.prisma       (see Data & Schema)
-│   ├── dist/                      Build output — DO NOT edit
-│   └── .env                       Secrets (see Configuration)
+│   ├── dist/                      Build output — do not edit
+│   └── .env                       Secrets (gitignored; see Configuration)
 ├── frontend/                       React 18 + TypeScript SPA (CRA)
 │   ├── src/
 │   │   ├── App.tsx                BrowserRouter basename="/rssreader"
@@ -57,8 +57,10 @@ A personal RSS reader web application for a single user (`secorp@gmail.com`). Ag
 │   ├── public/index.html          Uses %PUBLIC_URL% for asset paths (important!)
 │   ├── .env.production            REACT_APP_API_URL=/rssreader
 │   └── package.json               homepage: "/rssreader" — critical
-├── rss-reader-apache.conf          Reference Apache snippet
-├── deploy.sh, setup.sh, *.sh       Operational scripts (some one-shot, some still useful)
+├── rss-reader-apache.conf          Apache vhost template (placeholders to fill)
+├── deploy.sh, setup.sh             Operational scripts
+├── DEPLOYMENT.md                   Production install walkthrough
+├── README.md                       Public-facing overview
 ├── AGENTS.md                       This file
 └── CLAUDE.md                       Stub: @AGENTS.md
 ```
@@ -66,15 +68,15 @@ A personal RSS reader web application for a single user (`secorp@gmail.com`). Ag
 ## Architecture
 
 ```
-Browser → https://secorp.net/rssreader
-           ↓ Apache :443 (/etc/apache2/sites-enabled/secorp.conf, *:443 vhost)
+Browser → https://YOUR_DOMAIN/rssreader
+           ↓ Apache :443 (TLS-terminating vhost)
            ├── /rssreader/static/* → /var/www/html/rss-reader/static/ (built React)
-           ├── /rssreader/api/*    → http://127.0.0.1:3003/api/* (proxied)
-           ├── /rssreader/auth/*   → http://127.0.0.1:3003/auth/* (proxied)
+           ├── /rssreader/api/*    → http://127.0.0.1:BACKEND_PORT/api/*  (proxied)
+           ├── /rssreader/auth/*   → http://127.0.0.1:BACKEND_PORT/auth/* (proxied)
            └── /rssreader/*        → /var/www/html/rss-reader/index.html (Router fallback)
 
-Backend: systemd "rss-reader" → /usr/bin/node /home/secorp/src/rssreader/backend/dist/index.js
-  Listens on 127.0.0.1:3003 only (not public).
+Backend: systemd "rss-reader" → /usr/bin/node <PROJECT_DIR>/backend/dist/index.js
+  Listens on 127.0.0.1:BACKEND_PORT only (not public).
 
 Database: PostgreSQL on localhost:5432, DB "rssreader".
 ```
@@ -99,7 +101,7 @@ ProxyPass /rssreader/auth http://127.0.0.1:3003/auth
 ProxyPassReverse /rssreader/auth http://127.0.0.1:3003/auth
 ```
 
-**Trade-off: subpath deployment vs subdomain** — chose subpath under `secorp.net` to share the existing TLS cert and vhost. Cost: every asset path, the Router `basename`, the `homepage` field, and `REACT_APP_API_URL` must agree on `/rssreader`, and getting any one wrong breaks production. See Gotchas.
+**Trade-off: subpath deployment vs subdomain** — the default deployment serves the app under a subpath (`/rssreader`) so it can share an existing TLS cert and vhost with other apps on the same domain. Cost: every asset path, the Router `basename`, the `homepage` field in `package.json`, and `REACT_APP_API_URL` must agree on `/rssreader`, and getting any one wrong breaks production. See Gotchas. If you'd rather run on its own subdomain, the bundled `rss-reader-apache.conf` shows a port-based vhost as an alternative.
 
 ## Data & Schema
 
@@ -119,15 +121,16 @@ File: `backend/prisma/schema.prisma`.
 
 ## Configuration
 
-`backend/.env`:
+`backend/.env` (see `backend/.env.example` for the canonical list):
 
 ```
-DATABASE_URL="postgresql://secorp:REDACTED@localhost:5432/rssreader"
+DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/rssreader"
 GOOGLE_CLIENT_ID="..."
 GOOGLE_CLIENT_SECRET="..."
-GOOGLE_CALLBACK_URL="https://secorp.net/rssreader/auth/google/callback"
+GOOGLE_CALLBACK_URL="https://YOUR_DOMAIN/rssreader/auth/google/callback"
 SESSION_SECRET="..."
-FRONTEND_URL="https://secorp.net/rssreader"
+FRONTEND_URL="https://YOUR_DOMAIN/rssreader"
+ALLOWED_EMAILS="alice@example.com,bob@example.com"
 PORT=3003
 NODE_ENV="production"
 ```
@@ -140,14 +143,14 @@ REACT_APP_API_URL=/rssreader
 
 This is what makes axios send API calls to `/rssreader/api/...` in production. In development the baseURL is empty and calls go to the React dev server proxy.
 
-OAuth: Google Console must list `https://secorp.net/rssreader/auth/google/callback` as an Authorized redirect URI. Only `secorp@gmail.com` can log in (hard-coded check in `passport.ts`). Sessions: 90-day rolling TTL, stored in PostgreSQL `session` table (connect-pg-simple), cookie named `rssreader.sid` scoped to `/rssreader` path to avoid conflicts with other services on `secorp.net`.
+OAuth: Google Console must list `https://YOUR_DOMAIN/rssreader/auth/google/callback` as an Authorized redirect URI. Only addresses listed in `ALLOWED_EMAILS` can log in (`backend/src/middleware/passport.ts`). Sessions: 90-day rolling TTL, stored in PostgreSQL `session` table (connect-pg-simple), cookie named `rssreader.sid` scoped to `/rssreader` path to avoid conflicts with other services on the same domain.
 
 ## Build, Run, Deploy
 
 After backend changes:
 
 ```bash
-cd /home/secorp/termag/projects/rssreader/backend
+cd backend
 npm run build
 sudo systemctl restart rss-reader
 ```
@@ -155,7 +158,7 @@ sudo systemctl restart rss-reader
 After frontend changes:
 
 ```bash
-cd /home/secorp/termag/projects/rssreader/frontend
+cd frontend
 npm run build
 sudo cp -r build/. /var/www/html/rss-reader/
 ```
@@ -163,8 +166,10 @@ sudo cp -r build/. /var/www/html/rss-reader/
 If a subsequent `npm run build` fails with `EACCES: permission denied`, the previous `sudo cp` left `build/` root-owned:
 
 ```bash
-sudo chown -R secorp:secorp /home/secorp/termag/projects/rssreader/frontend/build
+sudo chown -R "$USER:$USER" frontend/build
 ```
+
+For first-time install, see [DEPLOYMENT.md](DEPLOYMENT.md) and the bundled `setup.sh` / `deploy.sh`.
 
 ## Observability & Maintenance
 
@@ -175,7 +180,7 @@ sudo journalctl -u rss-reader -f
 # Service status
 sudo systemctl status rss-reader
 
-# Manual feed refresh (per feed, via API)
+# Manual feed refresh (per feed, via API; auth required)
 curl -X POST http://127.0.0.1:3003/api/feeds/:id/refresh
 ```
 
@@ -209,7 +214,7 @@ No webhooks, no socket.io, no external integrations beyond Google OAuth and inbo
 
 5. **Prisma schema changes** — don't use `prisma migrate dev` (interactive TTY). Use raw SQL (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...`) then `npx prisma generate`. `prisma db push` works but warns about the connect-pg-simple `session` table (safe to ignore).
 
-6. **Build directory ownership** — `sudo cp -r build/. /var/www/html/rss-reader/` leaves `build/` root-owned. Fix with `sudo chown -R secorp:secorp frontend/build` before the next `npm run build`.
+6. **Build directory ownership** — `sudo cp -r build/. /var/www/html/rss-reader/` leaves `build/` root-owned. Fix with `sudo chown -R "$USER:$USER" frontend/build` before the next `npm run build`.
 
 7. **OAuth login URL** — `LoginPage.tsx` uses `window.location.href` to start the OAuth flow. The URL must be `/rssreader/auth/google`, not `/auth/google`. A hardcoded `/auth/google` 404s because Apache only proxies `/rssreader/auth/*`.
 
@@ -217,15 +222,13 @@ No webhooks, no socket.io, no external integrations beyond Google OAuth and inbo
 
 9. **Reading stats count `openedAt`, not `isRead`** — see Data & Schema. Mark-as-read does not increment the visible reading stats; opening the article does.
 
-10. **Session cookie path must match the subpath** — the session cookie is scoped to `/rssreader` (set in `backend/src/index.ts`). If you change the deployment subpath or remove the `path` option, sessions will leak across other apps on `secorp.net` or fail to be sent on `/rssreader/*` requests. This was a real bug fixed in 2026-04.
+10. **Session cookie path must match the subpath** — the session cookie is scoped to `/rssreader` (set in `backend/src/index.ts`). If you change the deployment subpath or remove the `path` option, sessions will leak across other apps on the same domain or fail to be sent on `/rssreader/*` requests. This was a real bug fixed in 2026-04.
 
-11. **Article lightbox and mobile viewport** — `FeedItemCard` includes an in-app lightbox for opening articles without leaving the reader. On mobile, the lightbox interacts with viewport scrolling: `App.css` contains specific rules to prevent body-scroll-lock issues and keep the lightbox content scrollable. Touch refactors here carefully — desktop testing alone won't catch regressions.
+11. **Article lightbox and mobile viewport** — `FeedItemCard` includes an in-app lightbox for opening articles without leaving the reader. On mobile, the lightbox interacts with viewport scrolling: `App.css` contains specific rules to prevent body-scroll-lock issues and keep the lightbox content scrollable. Refactor touch behavior here carefully — desktop testing alone won't catch regressions.
+
+12. **RSS HTML must be sanitized with DOMPurify** — feed item bodies are arbitrary third-party HTML and are rendered via `dangerouslySetInnerHTML` in `FeedItemCard` (notably inside the lightbox). All such HTML must pass through DOMPurify first. A 2026-05 XSS fix added this; do not remove the sanitization step or render raw `description`/content fields directly. If adding new surfaces that render feed HTML (e.g. preview tooltips, summaries), sanitize there too.
 
 ## Related
-
-**Other projects:**
-- [colonization-cargo-tracker](../colonization-cargo-tracker/CLAUDE.md) — same subpath-deployment pattern; same Prisma schema-change conventions
-- [meeting-slack-app](../meeting-slack-app/AGENTS.md) — sibling app on `secorp.net`, also subpath-deployed
 
 **Topics:** none yet.
 
