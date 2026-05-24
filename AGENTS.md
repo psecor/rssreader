@@ -1,7 +1,7 @@
 ---
 project: rssreader
 status: production
-status_description: "Self-hosted Google-OAuth-gated RSS reader for a small allowlist of users; feature-stable with occasional small adds (recent: in-app article lightbox, DOMPurify XSS hardening)."
+status_description: "Self-hosted Google-OAuth-gated RSS reader for a small allowlist of users; feature-stable, open-sourced 2026-05 with DOMPurify XSS hardening and repo cleanup."
 last_updated: 2026-05-09
 last_updated_by:
   - agent:claude-opus-4-7
@@ -18,7 +18,7 @@ A self-hosted RSS reader web application. Aggregates RSS feeds, tracks read/unre
 
 ## Status
 
-**Production-ready.** Backend, frontend, scheduler, and OAuth all implemented. Schema migrations done via raw SQL or `prisma db push`, not `prisma migrate dev` (the latter is interactive and doesn't fit non-TTY deploy contexts). No automated tests yet — manual smoke testing only.
+**Production-ready** and now publicly released as open source (LICENSE added 2026-05). Backend, frontend, scheduler, and OAuth all implemented. Schema migrations done via raw SQL or `prisma db push`, not `prisma migrate dev` (the latter is interactive and doesn't fit non-TTY deploy contexts). No automated tests yet — manual smoke testing only.
 
 ## Repository Layout
 
@@ -43,6 +43,7 @@ rssreader/
 │   │   └── types/                 express.d.ts, connect-pg-simple.d.ts
 │   ├── prisma/schema.prisma       (see Data & Schema)
 │   ├── dist/                      Build output — do not edit
+│   ├── .env.example               Canonical env var list
 │   └── .env                       Secrets (gitignored; see Configuration)
 ├── frontend/                       React 18 + TypeScript SPA (CRA)
 │   ├── src/
@@ -56,14 +57,17 @@ rssreader/
 │   │   └── types/index.ts         All data types
 │   ├── public/index.html          Uses %PUBLIC_URL% for asset paths (important!)
 │   ├── .env.production            REACT_APP_API_URL=/rssreader
-│   └── package.json               homepage: "/rssreader" — critical
+│   └── package.json               homepage: "/rssreader" — critical; depends on dompurify
 ├── rss-reader-apache.conf          Apache vhost template (placeholders to fill)
 ├── deploy.sh, setup.sh             Operational scripts
 ├── DEPLOYMENT.md                   Production install walkthrough
 ├── README.md                       Public-facing overview
+├── LICENSE                         Open-source license (added 2026-05 release)
 ├── AGENTS.md                       This file
 └── CLAUDE.md                       Stub: @AGENTS.md
 ```
+
+Note: an earlier era of this repo accumulated many ad-hoc operational shell scripts (`fix-auth.sh`, `update-thumbnails.sh`, `force-restart-backend.sh`, etc.). These were removed in the 2026-05 open-source-release cleanup. If you find references to them in old notes or git history, the canonical replacements are `deploy.sh` and `setup.sh`.
 
 ## Architecture
 
@@ -239,6 +243,7 @@ No webhooks, no socket.io, no external integrations beyond Google OAuth and inbo
 - [interesting-opportunity-collator](../interesting-opportunity-collator/AGENTS.md) — Related
 - [meeting-slack-app](../meeting-slack-app/AGENTS.md) — Related
 - [mommo-site](../mommo-site/AGENTS.md) — Related
+- [opportunities](../opportunities/AGENTS.md) — Related
 - [twilio-talker](../twilio-talker/AGENTS.md) — Related
 - [typing-lag](../typing-lag/AGENTS.md) — Related
 <!-- agent-wiki:backlinks-end -->
