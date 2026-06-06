@@ -61,6 +61,12 @@ export const feedItemsApi = {
     limit?: number;
     offset?: number;
   }) => api.get<FeedItem[]>('/api/feed-items', { params }),
+  getCount: (params?: {
+    feedId?: number;
+    categoryId?: number;
+    isRead?: boolean;
+    search?: string;
+  }) => api.get<{ count: number }>('/api/feed-items/count', { params }),
   getOne: (id: number) => api.get<FeedItem>(`/api/feed-items/${id}`),
 };
 

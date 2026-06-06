@@ -158,6 +158,85 @@ router.get('/', ensureAuthenticated, async (req, res) => {
   }
 });
 
+// Count feed items matching the same filters as GET / (no pagination cap)
+router.get('/count', ensureAuthenticated, async (req, res) => {
+  try {
+    const { feedId, categoryId, isRead, search } = req.query;
+
+    const where: any = {};
+
+    if (feedId) {
+      where.feedId = parseInt(feedId as string);
+      const feed = await prisma.feed.findFirst({
+        where: { id: where.feedId, userId: req.user!.id },
+      });
+      if (!feed) {
+        return res.status(404).json({ error: 'Feed not found' });
+      }
+    } else if (categoryId) {
+      const feeds = await prisma.feed.findMany({
+        where: {
+          categoryId: parseInt(categoryId as string),
+          userId: req.user!.id,
+        },
+        select: { id: true },
+      });
+      where.feedId = { in: feeds.map((f) => f.id) };
+    } else {
+      const userFeeds = await prisma.feed.findMany({
+        where: { userId: req.user!.id },
+        select: { id: true },
+      });
+      where.feedId = { in: userFeeds.map((f) => f.id) };
+    }
+
+    const andConditions: any[] = [];
+
+    if (search && typeof search === 'string') {
+      andConditions.push({
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+        ],
+      });
+    }
+
+    if (isRead !== undefined) {
+      const isReadBool = isRead === 'true';
+      if (isReadBool) {
+        andConditions.push({
+          readStatus: {
+            some: { userId: req.user!.id, isRead: true },
+          },
+        });
+      } else {
+        andConditions.push({
+          OR: [
+            {
+              readStatus: { none: { userId: req.user!.id } },
+            },
+            {
+              readStatus: {
+                some: { userId: req.user!.id, isRead: false },
+              },
+            },
+          ],
+        });
+      }
+    }
+
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
+    }
+
+    const count = await prisma.feedItem.count({ where });
+    res.json({ count });
+  } catch (error) {
+    console.error('Error counting feed items:', error);
+    res.status(500).json({ error: 'Failed to count feed items' });
+  }
+});
+
 // Get a single feed item
 router.get('/:id', ensureAuthenticated, async (req, res) => {
   try {

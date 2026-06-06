@@ -9,7 +9,8 @@ interface FeedItemListProps {
   selectedFeed: Feed | null;
   selectedCategory: Category | null;
   onItemUpdate: () => void;
-  unreadCount: number;
+  visibleUnreadCount: number;
+  totalUnreadCount: number;
 }
 
 const FeedItemList: React.FC<FeedItemListProps> = ({
@@ -18,7 +19,8 @@ const FeedItemList: React.FC<FeedItemListProps> = ({
   selectedFeed,
   selectedCategory,
   onItemUpdate,
-  unreadCount,
+  visibleUnreadCount,
+  totalUnreadCount,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const savedScrollPosition = useRef<number>(0);
@@ -80,8 +82,12 @@ const FeedItemList: React.FC<FeedItemListProps> = ({
       <div className="feed-header">
         <div>
           <h2>{getTitle()}</h2>
-          {unreadCount > 0 && (
-            <span className="unread-count">{unreadCount} unread</span>
+          {totalUnreadCount > 0 && (
+            <span className="unread-count">
+              {visibleUnreadCount < totalUnreadCount
+                ? `${visibleUnreadCount} of ${totalUnreadCount} unread`
+                : `${totalUnreadCount} unread`}
+            </span>
           )}
         </div>
         {items.length > 0 && (

@@ -218,8 +218,8 @@ const ReaderPage: React.FC = () => {
       if (selectedCategory) params.categoryId = selectedCategory.id;
       if (searchQuery) params.search = searchQuery;
 
-      const response = await feedItemsApi.getAll(params);
-      setUnreadCount(response.data.length);
+      const response = await feedItemsApi.getCount(params);
+      setUnreadCount(response.data.count);
     } catch (error) {
       console.error('Error loading unread count:', error);
     }
@@ -425,7 +425,8 @@ const ReaderPage: React.FC = () => {
             selectedFeed={selectedFeed}
             selectedCategory={selectedCategory}
             onItemUpdate={handleItemUpdate}
-            unreadCount={unreadCount}
+            visibleUnreadCount={feedItems.filter((i) => !i.isRead).length}
+            totalUnreadCount={unreadCount}
           />
         )}
       </div>
