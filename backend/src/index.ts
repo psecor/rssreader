@@ -11,6 +11,7 @@ dotenv.config();
 
 // Import routes and services
 import { configurePassport } from './middleware/passport';
+import { bearerAuth } from './middleware/bearerAuth';
 import authRoutes from './routes/auth';
 import categoriesRoutes from './routes/categories';
 import feedsRoutes from './routes/feeds';
@@ -71,6 +72,12 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 configurePassport();
+
+// Mobile bearer-token fallback. No-ops when no Authorization header is
+// present, so it leaves web/session requests untouched. When a valid bearer
+// token is supplied, populates req.user — which is all that req.isAuthenticated()
+// checks, so the existing ensureAuthenticated middleware accepts it as-is.
+app.use(bearerAuth);
 
 // Routes
 app.use('/auth', authRoutes);
