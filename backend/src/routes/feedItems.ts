@@ -13,11 +13,22 @@ router.get('/', ensureAuthenticated, async (req, res) => {
       categoryId,
       isRead,
       search,
+      since,
       limit = '50',
       offset = '0',
     } = req.query;
 
     const where: any = {};
+
+    // Delta sync: only items created after the cursor. Items themselves are
+    // effectively immutable post-creation; read-status changes are surfaced
+    // via /api/read-status?since=...
+    if (since && typeof since === 'string') {
+      const parsed = new Date(since);
+      if (!Number.isNaN(parsed.getTime())) {
+        where.createdAt = { gt: parsed };
+      }
+    }
 
     // Filter by feed
     if (feedId) {
@@ -131,6 +142,7 @@ router.get('/', ensureAuthenticated, async (req, res) => {
           select: {
             isRead: true,
             readAt: true,
+            updatedAt: true,
           },
         },
       },
@@ -148,6 +160,8 @@ router.get('/', ensureAuthenticated, async (req, res) => {
       ...item,
       isRead: item.readStatus.length > 0 && item.readStatus[0].isRead,
       readAt: item.readStatus.length > 0 ? item.readStatus[0].readAt : null,
+      readStatusUpdatedAt:
+        item.readStatus.length > 0 ? item.readStatus[0].updatedAt : null,
       readStatus: undefined,
     }));
 

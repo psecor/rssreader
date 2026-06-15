@@ -5,6 +5,43 @@ import { ensureAuthenticated } from '../middleware/auth';
 const router = express.Router();
 const prisma = new PrismaClient();
 
+// Delta-sync read endpoint: returns read-status rows for the current user,
+// optionally filtered by `?since=<ISO>` (the client's last-sync cursor).
+// Paginated with `limit` / `offset`. The Android client calls this on each
+// background sync to pick up reads/unreads made elsewhere (e.g. web).
+router.get('/', ensureAuthenticated, async (req, res) => {
+  try {
+    const { since, limit = '500', offset = '0' } = req.query;
+
+    const where: any = { userId: req.user!.id };
+    if (since && typeof since === 'string') {
+      const parsed = new Date(since);
+      if (!Number.isNaN(parsed.getTime())) {
+        where.updatedAt = { gt: parsed };
+      }
+    }
+
+    const rows = await prisma.readStatus.findMany({
+      where,
+      select: {
+        feedItemId: true,
+        isRead: true,
+        readAt: true,
+        openedAt: true,
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: 'asc' },
+      take: parseInt(limit as string),
+      skip: parseInt(offset as string),
+    });
+
+    res.json(rows);
+  } catch (error) {
+    console.error('Error fetching read-status deltas:', error);
+    res.status(500).json({ error: 'Failed to fetch read statuses' });
+  }
+});
+
 // Mark item(s) as read
 router.post('/mark-read', ensureAuthenticated, async (req, res) => {
   try {
