@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily RSS Reader Postgres backup
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=15min
+Persistent=true
+Unit=pg-backup.service
+
+[Install]
+WantedBy=timers.target

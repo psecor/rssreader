@@ -1,0 +1,12 @@
+[Unit]
+Description=RSS Reader Postgres backup
+After=postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=oneshot
+User=secorp
+# BACKUP_OFFSITE example (uncomment + adjust once an off-machine destination
+# is set up — e.g. rclone, s3, another host via ssh):
+# Environment=BACKUP_OFFSITE=xargs -I{} rclone copy {} remote:rssreader-backups/
+ExecStart=/home/secorp/src/rssreader/scripts/pg-backup.sh

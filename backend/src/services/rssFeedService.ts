@@ -1,5 +1,6 @@
 import Parser from 'rss-parser';
 import { PrismaClient } from '@prisma/client';
+import { safeFetchText } from './safeFetch';
 
 const parser = new Parser({
   customFields: {
@@ -71,7 +72,11 @@ function extractThumbnail(item: any): string | undefined {
 
 export async function fetchFeed(url: string): Promise<RSSItem[]> {
   try {
-    const feed = await parser.parseURL(url);
+    // safeFetchText applies SSRF protections (scheme allowlist, private-IP
+    // blocklist re-checked per redirect, size + timeout + redirect caps) that
+    // rss-parser's built-in parseURL doesn't. Hand the XML string to parseString.
+    const xml = await safeFetchText(url);
+    const feed = await parser.parseString(xml);
 
     const items: RSSItem[] = feed.items.map((item: any) => ({
       title: item.title || 'Untitled',

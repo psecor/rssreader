@@ -13,8 +13,10 @@ dotenv.config();
 import { configurePassport } from './middleware/passport';
 import { bearerAuth } from './middleware/bearerAuth';
 import { ensureAuthenticatedWithSubscription } from './middleware/subscription';
+import { apiRateLimit } from './middleware/rateLimit';
 import authRoutes from './routes/auth';
 import meRoutes from './routes/me';
+import webhooksRoutes from './routes/webhooks';
 import categoriesRoutes from './routes/categories';
 import feedsRoutes from './routes/feeds';
 import feedItemsRoutes from './routes/feedItems';
@@ -83,6 +85,13 @@ app.use(bearerAuth);
 
 // Routes
 app.use('/auth', authRoutes);
+
+// Store webhooks — no auth (real requests come from Google/Apple; signature
+// verification lands in Phase B/C). Stubbed to log-and-ack for now.
+app.use('/webhooks', webhooksRoutes);
+
+// Per-user rate limiting on /api/* — 300 req/min. See middleware/rateLimit.ts.
+app.use('/api', apiRateLimit);
 
 // /api/me is auth-gated but NOT subscription-gated — clients need it to detect
 // the paywall case ("signed in but no active subscription") without a 402.
