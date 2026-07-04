@@ -1,8 +1,8 @@
 ---
 project: rssreader
 status: production
-status_description: "Self-hosted Google-OAuth-gated RSS reader for a small allowlist of users; feature-stable, open-sourced 2026-05 with DOMPurify XSS hardening and repo cleanup."
-last_updated: 2026-05-09
+status_description: "Self-hosted Google-OAuth-gated RSS reader for a small allowlist of users; web UI feature-stable, gained a mobile API surface (JWT bearer auth + delta sync) in 2026-06."
+last_updated: 2026-07-04
 last_updated_by:
   - agent:claude-opus-4-7
   - human:secorp
@@ -28,20 +28,25 @@ rssreader/
 │   ├── src/
 │   │   ├── index.ts               Entry: middleware, route registration
 │   │   ├── middleware/
-│   │   │   ├── auth.ts            ensureAuthenticated
+│   │   │   ├── auth.ts            ensureAuthenticated (session-based)
+│   │   │   ├── bearerAuth.ts      ensureAuthenticatedBearerOrSession — accepts JWT Bearer or session cookie
 │   │   │   └── passport.ts        Google OAuth (allowlisted via ALLOWED_EMAILS)
 │   │   ├── routes/
-│   │   │   ├── auth.ts            /auth/google, /auth/google/callback, /auth/me, /auth/logout
+│   │   │   ├── auth.ts            /auth/google, /auth/google/callback, /auth/me, /auth/logout,
+│   │   │   │                      plus /auth/mobile/google (ID-token exchange → JWT) and /auth/mobile/refresh
 │   │   │   ├── categories.ts      /api/categories CRUD + /api/categories/index
 │   │   │   ├── feeds.ts           /api/feeds CRUD + /:id/refresh
-│   │   │   ├── feedItems.ts       /api/feed-items with filtering/search/pagination
-│   │   │   ├── readStatus.ts      mark-read/mark-unread/mark-all-read
+│   │   │   ├── feedItems.ts       /api/feed-items with filtering/search/pagination + delta sync (?since=)
+│   │   │   ├── readStatus.ts      mark-read/mark-unread/mark-all-read + bulk delta-sync endpoint
 │   │   │   └── history.ts         /api/history + /api/history/stats
 │   │   ├── services/
 │   │   │   ├── rssFeedService.ts  Parses RSS XML, saves items, extracts thumbnails
-│   │   │   └── feedSchedulerService.ts  node-cron every 15 minutes
+│   │   │   ├── feedSchedulerService.ts  node-cron every 15 minutes
+│   │   │   ├── googleVerify.ts    Verifies Google ID tokens from the mobile client
+│   │   │   └── jwtService.ts      Issues/verifies app JWTs (access + refresh) for the mobile client
 │   │   └── types/                 express.d.ts, connect-pg-simple.d.ts
 │   ├── prisma/schema.prisma       (see Data & Schema)
+│   ├── prisma/migrations/         Includes 20260614230000_add_readstatus_updated_at
 │   ├── dist/                      Build output — do not edit
 │   ├── .env.example               Canonical env var list
 │   └── .env                       Secrets (gitignored; see Configuration)
@@ -117,11 +122,13 @@ File: `backend/prisma/schema.prisma`.
 | **Category** | id, name, userId — `unique(userId, name)` |
 | **Feed** | id, title, url, categoryId, userId, lastFetchedAt, lastFetchError — `unique(userId, url)` |
 | **FeedItem** | id, feedId, title, link, guid, description, author, pubDate, thumbnail — `unique(feedId, guid)` |
-| **ReadStatus** | id, feedItemId, userId, isRead, readAt, openedAt — `unique(feedItemId, userId)` |
+| **ReadStatus** | id, feedItemId, userId, isRead, readAt, openedAt, updatedAt — `unique(feedItemId, userId)` |
 
 **`ReadStatus` distinction:** `readAt` is set whenever an article is marked read by any means (click, toggle, bulk). `openedAt` is set ONLY when the user clicks to open the article in a new tab. The top-bar reading stats use `openedAt`, not `readAt`.
 
-**Schema changes:** the project does not use `prisma migrate dev` (non-interactive in this env). Use `prisma db push --accept-data-loss` cautiously — the warning about the `session` table (managed by connect-pg-simple, not Prisma) is safe to ignore if you're only adding columns. For trickier changes use raw SQL via `psql`, then `npx prisma generate`.
+**`ReadStatus.updatedAt`** (added 2026-06 in migration `20260614230000_add_readstatus_updated_at`) is the high-water mark used by the mobile client's delta-sync endpoint. It must be bumped on every write to a `ReadStatus` row — Prisma's `@updatedAt` handles this for normal updates, but raw SQL paths (e.g. bulk mark-all-read) must set it explicitly or delta sync will miss those rows. See Gotchas.
+
+**Schema changes:** the project does not use `prisma migrate dev` (non-interactive in this env). Use `prisma db push --accept-data-loss` cautiously — the warning about the `session` table (managed by connect-pg-simple, not Prisma) is safe to ignore if you're only adding columns. For trickier changes use raw SQL via `psql`, then `npx prisma generate`. The `updatedAt` migration above was hand-written SQL committed under `prisma/migrations/`.
 
 ## Configuration
 
@@ -132,7 +139,9 @@ DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/rssreader"
 GOOGLE_CLIENT_ID="..."
 GOOGLE_CLIENT_SECRET="..."
 GOOGLE_CALLBACK_URL="https://YOUR_DOMAIN/rssreader/auth/google/callback"
+GOOGLE_MOBILE_CLIENT_ID="..."           # iOS/Android OAuth client id; audience for mobile ID tokens
 SESSION_SECRET="..."
+JWT_SECRET="..."                        # signs mobile access + refresh tokens
 FRONTEND_URL="https://YOUR_DOMAIN/rssreader"
 ALLOWED_EMAILS="alice@example.com,bob@example.com"
 PORT=3003
@@ -147,7 +156,9 @@ REACT_APP_API_URL=/rssreader
 
 This is what makes axios send API calls to `/rssreader/api/...` in production. In development the baseURL is empty and calls go to the React dev server proxy.
 
-OAuth: Google Console must list `https://YOUR_DOMAIN/rssreader/auth/google/callback` as an Authorized redirect URI. Only addresses listed in `ALLOWED_EMAILS` can log in (`backend/src/middleware/passport.ts`). Sessions: 90-day rolling TTL, stored in PostgreSQL `session` table (connect-pg-simple), cookie named `rssreader.sid` scoped to `/rssreader` path to avoid conflicts with other services on the same domain.
+OAuth: Google Console must list `https://YOUR_DOMAIN/rssreader/auth/google/callback` as an Authorized redirect URI for the web client. The mobile flow uses a separate OAuth client (`GOOGLE_MOBILE_CLIENT_ID`) — the mobile app obtains a Google ID token natively and POSTs it to `/auth/mobile/google`, which verifies the token's audience matches `GOOGLE_MOBILE_CLIENT_ID` and the email is in `ALLOWED_EMAILS` before issuing app JWTs. Only addresses listed in `ALLOWED_EMAILS` can log in via either path (`backend/src/middleware/passport.ts`, `backend/src/services/googleVerify.ts`).
+
+Sessions (web): 90-day rolling TTL, stored in PostgreSQL `session` table (connect-pg-simple), cookie named `rssreader.sid` scoped to `/rssreader` path. JWTs (mobile): signed with `JWT_SECRET`, short-lived access token + long-lived refresh token via `/auth/mobile/refresh`.
 
 ## Build, Run, Deploy
 
@@ -204,7 +215,16 @@ URL parameter navigation — ReaderPage syncs view state to URL params:
 | `&unreadOnly=true` | Unread filter |
 | `&search=foo` | Search query |
 
-No webhooks, no socket.io, no external integrations beyond Google OAuth and inbound RSS.
+**Mobile API surface** (added 2026-06): the backend exposes a bearer-auth-friendly API for a native mobile client.
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /auth/mobile/google` | Exchange a Google ID token (audience = `GOOGLE_MOBILE_CLIENT_ID`) for app access + refresh JWTs. Enforces `ALLOWED_EMAILS`. |
+| `POST /auth/mobile/refresh` | Exchange a refresh JWT for a new access JWT. |
+| `GET /api/feed-items?since=<ISO>` | Delta sync: items whose `ReadStatus.updatedAt` (or item `createdAt`) is newer than `since`. |
+| `POST /api/read-status/bulk` | Apply a batch of read/unread mutations from the mobile client; returns new high-water `updatedAt`. |
+
+Authenticated routes accept either the web session cookie or `Authorization: Bearer <jwt>` via `bearerAuth.ts`'s combined middleware. No webhooks, no socket.io, no external integrations beyond Google OAuth (web + mobile) and inbound RSS.
 
 ## Gotchas
 
@@ -232,7 +252,18 @@ No webhooks, no socket.io, no external integrations beyond Google OAuth and inbo
 
 12. **RSS HTML must be sanitized with DOMPurify** — feed item bodies are arbitrary third-party HTML and are rendered via `dangerouslySetInnerHTML` in `FeedItemCard` (notably inside the lightbox). All such HTML must pass through DOMPurify first. A 2026-05 XSS fix added this; do not remove the sanitization step or render raw `description`/content fields directly. If adding new surfaces that render feed HTML (e.g. preview tooltips, summaries), sanitize there too.
 
+13. **"X of Y unread" pill uses a separate count endpoint** — the header pill shows the *true* unread total for the current view, not just the count of items in the paginated response. `ReaderPage` calls a dedicated count route in `backend/src/routes/feedItems.ts` that applies the same filters (view, feed/category, search) without pagination. If you add a new filter to the list endpoint, mirror it in the count endpoint or the pill will drift from reality.
+
+14. **Use `ensureAuthenticatedBearerOrSession` on shared routes** — any `/api/*` route consumed by both the web SPA (session cookie) and the mobile client (JWT) must use the combined middleware from `bearerAuth.ts`. Using the old session-only `ensureAuthenticated` will silently 401 the mobile app. New endpoints default to the combined middleware unless they're explicitly web-only (e.g. anything that touches `req.session`).
+
+15. **Mobile audience check** — `googleVerify.ts` validates the Google ID token's `aud` claim against `GOOGLE_MOBILE_CLIENT_ID`, not `GOOGLE_CLIENT_ID`. The mobile OAuth client id is distinct from the web one; mixing them up makes mobile login fail with an opaque "invalid audience" error. Both clients must list the same `ALLOWED_EMAILS` users in Google Console for testing.
+
+16. **Delta sync depends on `ReadStatus.updatedAt`** — the `GET /api/feed-items?since=` and bulk read-status endpoints rely on `ReadStatus.updatedAt` as the high-water mark. Prisma's `@updatedAt` directive covers normal `.update()` / `.upsert()` calls, but any raw SQL path (notably bulk mark-all-read) must set `updated_at = NOW()` explicitly. Forgetting this makes the mobile client silently miss those changes on its next sync — there's no error, just stale state.
+
 ## Related
+
+**Documents in this repo:**
+- [LAUNCH_PLAN.md](./LAUNCH_PLAN.md) — cross-repo roadmap for shipping RSSReader as a paid subscription service on Play + App Store (invite-only closed beta). Phase A (backend multi-tenancy) is scoped to this repo.
 
 **Topics:** none yet.
 
