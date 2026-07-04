@@ -60,19 +60,63 @@ router.post('/google/mobile', async (req, res) => {
     return res.status(403).json({ error: 'Unauthorized email address' });
   }
 
-  const user = await prisma.user.upsert({
+  // Same match-by-googleId-then-by-email logic as the web flow: attaches the
+  // real googleId onto a founder-provisioned placeholder User row if one was
+  // pre-created by the admin CLI.
+  let user = await prisma.user.findUnique({
     where: { googleId: identity.sub },
-    update: { email: identity.email, name: identity.name },
+  });
+
+  if (!user) {
+    const byEmail = await prisma.user.findUnique({
+      where: { email: identity.email },
+    });
+    if (byEmail) {
+      user = await prisma.user.update({
+        where: { id: byEmail.id },
+        data: {
+          googleId: identity.sub,
+          email: identity.email,
+          name: identity.name ?? byEmail.name,
+        },
+      });
+    }
+  } else if (
+    user.email !== identity.email ||
+    (identity.name && user.name !== identity.name)
+  ) {
+    user = await prisma.user.update({
+      where: { id: user.id },
+      data: { email: identity.email, name: identity.name ?? user.name },
+    });
+  }
+
+  if (!user) {
+    user = await prisma.user.create({
+      data: {
+        googleId: identity.sub,
+        email: identity.email,
+        name: identity.name,
+      },
+    });
+  }
+
+  await prisma.subscription.upsert({
+    where: { userId: user.id },
     create: {
-      googleId: identity.sub,
-      email: identity.email,
-      name: identity.name,
+      userId: user.id,
+      status: 'active',
+      source: 'founder',
+      expiresAt: null,
     },
-    select: { id: true, email: true, name: true },
+    update: {},
   });
 
   const token = signMobileToken(user.id);
-  return res.json({ token, user });
+  return res.json({
+    token,
+    user: { id: user.id, email: user.email, name: user.name },
+  });
 });
 
 // Logout

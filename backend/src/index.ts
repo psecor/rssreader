@@ -12,7 +12,9 @@ dotenv.config();
 // Import routes and services
 import { configurePassport } from './middleware/passport';
 import { bearerAuth } from './middleware/bearerAuth';
+import { ensureAuthenticatedWithSubscription } from './middleware/subscription';
 import authRoutes from './routes/auth';
+import meRoutes from './routes/me';
 import categoriesRoutes from './routes/categories';
 import feedsRoutes from './routes/feeds';
 import feedItemsRoutes from './routes/feedItems';
@@ -81,11 +83,17 @@ app.use(bearerAuth);
 
 // Routes
 app.use('/auth', authRoutes);
-app.use('/api/categories', categoriesRoutes);
-app.use('/api/feeds', feedsRoutes);
-app.use('/api/feed-items', feedItemsRoutes);
-app.use('/api/read-status', readStatusRoutes);
-app.use('/api/history', historyRoutes);
+
+// /api/me is auth-gated but NOT subscription-gated — clients need it to detect
+// the paywall case ("signed in but no active subscription") without a 402.
+app.use('/api/me', meRoutes);
+
+// All other /api/* routes require an active subscription in addition to auth.
+app.use('/api/categories', ensureAuthenticatedWithSubscription, categoriesRoutes);
+app.use('/api/feeds', ensureAuthenticatedWithSubscription, feedsRoutes);
+app.use('/api/feed-items', ensureAuthenticatedWithSubscription, feedItemsRoutes);
+app.use('/api/read-status', ensureAuthenticatedWithSubscription, readStatusRoutes);
+app.use('/api/history', ensureAuthenticatedWithSubscription, historyRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

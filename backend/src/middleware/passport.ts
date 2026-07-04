@@ -37,33 +37,62 @@ export function configurePassport() {
             return done(new Error('No email found in Google profile'));
           }
 
-          if (!allowedEmails.has(email.toLowerCase())) {
+          const normalizedEmail = email.toLowerCase();
+
+          if (!allowedEmails.has(normalizedEmail)) {
             return done(new Error('Unauthorized email address'));
           }
 
-          // Find or create user
+          // Look up by googleId first; fall back to email to attach the real
+          // googleId onto a founder-provisioned placeholder row (see admin CLI
+          // grant-founder).
           let user = await prisma.user.findUnique({
             where: { googleId: profile.id },
           });
 
           if (!user) {
+            const byEmail = await prisma.user.findUnique({ where: { email } });
+            if (byEmail) {
+              user = await prisma.user.update({
+                where: { id: byEmail.id },
+                data: {
+                  googleId: profile.id,
+                  name: profile.displayName ?? byEmail.name,
+                  refreshToken,
+                },
+              });
+            }
+          } else if (refreshToken && user.refreshToken !== refreshToken) {
+            user = await prisma.user.update({
+              where: { id: user.id },
+              data: { refreshToken },
+            });
+          }
+
+          if (!user) {
             user = await prisma.user.create({
               data: {
                 googleId: profile.id,
-                email: email,
+                email,
                 name: profile.displayName,
-                refreshToken: refreshToken,
+                refreshToken,
               },
             });
-          } else {
-            // Update refresh token if changed
-            if (refreshToken && user.refreshToken !== refreshToken) {
-              user = await prisma.user.update({
-                where: { id: user.id },
-                data: { refreshToken },
-              });
-            }
           }
+
+          // Auto-provision a founder subscription for anyone in the ALLOWED_EMAILS
+          // safety list who doesn't yet have one. Keeps beta testers unblocked
+          // without a manual grant-founder step per email.
+          await prisma.subscription.upsert({
+            where: { userId: user.id },
+            create: {
+              userId: user.id,
+              status: 'active',
+              source: 'founder',
+              expiresAt: null,
+            },
+            update: {},
+          });
 
           return done(null, user);
         } catch (error) {
