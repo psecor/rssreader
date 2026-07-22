@@ -339,10 +339,12 @@ const ReaderPage: React.FC = () => {
     loadUnreadCount();
     // Reload categories to update sidebar unread counts
     loadCategories();
-    // Also reload index data so it's fresh when navigating back to Index view
-    loadIndexData();
     // Refresh top bar stats
     loadStats();
+    // Note: no loadIndexData() here. It sets the shared `loading` flag, which
+    // would flash "Loading..." over the current feed list on every mark-read.
+    // The main useEffect already refetches the index when the user navigates
+    // to that view.
   };
 
   const handleLogout = async () => {
