@@ -477,10 +477,14 @@ body {
 .feed-item-card {
   background-color: white;
   border: 1px solid #e0e0e0;
+  /* Reserve the 4px accent bar unconditionally so cards don't shift 4px to
+     the left when they flip from unread to read in place. */
+  border-left-width: 4px;
+  border-left-color: transparent;
   border-radius: 6px;
   padding: 0.75rem;
   cursor: pointer;
-  transition: box-shadow 0.2s, transform 0.2s;
+  transition: box-shadow 0.2s, transform 0.2s, border-left-color 0.2s;
 }
 
 .feed-item-card:hover {
@@ -489,7 +493,7 @@ body {
 }
 
 .feed-item-card.unread {
-  border-left: 4px solid #667eea;
+  border-left-color: #667eea;
 }
 
 .item-card-content {
