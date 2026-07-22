@@ -308,14 +308,33 @@ const ReaderPage: React.FC = () => {
     loadHistory(historySearch);
   };
 
-  const handleItemUpdate = () => {
-    // Reload items after marking as read/unread
-    if (selectedFeed) {
-      loadFeedItems();
-    } else if (selectedCategory) {
-      loadCategoryItems();
+  const handleItemUpdate = (patch?: { itemId: number; isRead: boolean }) => {
+    if (patch) {
+      // Single-item read/unread flip: update state in place instead of
+      // reloading. In unread-only mode a reload would drop the item and
+      // reshuffle the visible list, which is disruptive when the user was
+      // mid-scroll or about to open the next article.
+      setFeedItems((prev) =>
+        prev.map((item) =>
+          item.id === patch.itemId
+            ? {
+                ...item,
+                isRead: patch.isRead,
+                readAt: patch.isRead ? new Date().toISOString() : null,
+              }
+            : item,
+        ),
+      );
     } else {
-      loadAllItems();
+      // Bulk operation (mark-all-read) — we don't know which items changed,
+      // so fall back to a full reload.
+      if (selectedFeed) {
+        loadFeedItems();
+      } else if (selectedCategory) {
+        loadCategoryItems();
+      } else {
+        loadAllItems();
+      }
     }
     loadUnreadCount();
     // Reload categories to update sidebar unread counts

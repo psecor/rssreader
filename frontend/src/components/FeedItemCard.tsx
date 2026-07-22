@@ -6,7 +6,10 @@ import { readStatusApi } from '../services/api';
 
 interface FeedItemCardProps {
   item: FeedItem;
-  onUpdate: () => void;
+  // When a specific item's read state changes, pass a patch so the parent can
+  // update local state in place instead of reloading (which would remove the
+  // item from the list in unread-only mode — jarring reshuffle).
+  onUpdate: (patch?: { itemId: number; isRead: boolean }) => void;
 }
 
 const SWIPE_THRESHOLD = 80;
@@ -30,7 +33,7 @@ const FeedItemCard: React.FC<FeedItemCardProps> = ({ item, onUpdate }) => {
     setShowLightbox(false);
     try {
       await readStatusApi.markRead({ feedItemIds: [item.id], opened: true });
-      if (!item.isRead) onUpdate();
+      if (!item.isRead) onUpdate({ itemId: item.id, isRead: true });
     } catch (error) {
       console.error('Error marking item as read:', error);
     }
@@ -41,7 +44,7 @@ const FeedItemCard: React.FC<FeedItemCardProps> = ({ item, onUpdate }) => {
     if (!item.isRead) {
       try {
         await readStatusApi.markRead({ feedItemIds: [item.id] });
-        onUpdate();
+        onUpdate({ itemId: item.id, isRead: true });
       } catch (error) {
         console.error('Error marking item as read:', error);
       }
@@ -74,10 +77,11 @@ const FeedItemCard: React.FC<FeedItemCardProps> = ({ item, onUpdate }) => {
     try {
       if (item.isRead) {
         await readStatusApi.markUnread({ feedItemId: item.id });
+        onUpdate({ itemId: item.id, isRead: false });
       } else {
         await readStatusApi.markRead({ feedItemIds: [item.id] });
+        onUpdate({ itemId: item.id, isRead: true });
       }
-      onUpdate();
     } catch (error) {
       console.error('Error toggling read status:', error);
     }
@@ -106,7 +110,7 @@ const FeedItemCard: React.FC<FeedItemCardProps> = ({ item, onUpdate }) => {
       setSwipeX(0);
       try {
         await readStatusApi.markRead({ feedItemIds: [item.id] });
-        onUpdate();
+        onUpdate({ itemId: item.id, isRead: true });
       } catch (error) {
         console.error('Error marking item as read:', error);
       }

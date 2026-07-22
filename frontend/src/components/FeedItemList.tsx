@@ -8,7 +8,7 @@ interface FeedItemListProps {
   loading: boolean;
   selectedFeed: Feed | null;
   selectedCategory: Category | null;
-  onItemUpdate: () => void;
+  onItemUpdate: (patch?: { itemId: number; isRead: boolean }) => void;
   visibleUnreadCount: number;
   totalUnreadCount: number;
 }
@@ -43,12 +43,12 @@ const FeedItemList: React.FC<FeedItemListProps> = ({
   }, [items]);
 
   // Wrapper for onItemUpdate that preserves scroll position
-  const handleItemUpdate = () => {
+  const handleItemUpdate = (patch?: { itemId: number; isRead: boolean }) => {
     if (containerRef.current) {
       savedScrollPosition.current = containerRef.current.scrollTop;
       shouldPreserveScroll.current = true;
     }
-    onItemUpdate();
+    onItemUpdate(patch);
   };
 
   const handleMarkAllRead = async () => {
