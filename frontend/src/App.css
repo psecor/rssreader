@@ -532,8 +532,13 @@ body {
 .item-title {
   flex: 1;
   font-size: 0.95rem;
-  color: #333;
+  /* Always bold: a font-weight change on read/unread flip re-measures the
+     title and can drop it a line, shrinking the card and shifting siblings.
+     We differentiate read state with color instead. */
+  font-weight: 600;
+  color: #888;
   line-height: 1.3;
+  transition: color 0.2s;
 }
 
 .swipe-bg {
@@ -572,7 +577,7 @@ body {
 }
 
 .feed-item-card.unread .item-title {
-  font-weight: 600;
+  color: #333;
 }
 
 .read-toggle {
