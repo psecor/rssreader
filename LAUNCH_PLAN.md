@@ -160,6 +160,12 @@ These need answers before the corresponding phase can complete. Not blockers to 
 - **Grace period on lapsed subscriptions.** How long after `expires_at` before hard lockout? Both stores default to ~3 days of "billing grace period" during retry; add ~7 more of your own read-only mode?
 - **What lapsed users see.** Full lockout / read-only cache access / paywall-with-restore-purchase button? Read-only + prompt is friendliest, most complex.
 
+## Known issues
+
+Diagnosed bugs that aren't blocking phase progress but must land before Phase D beta invites go out.
+
+- **Android write queue silently fails to drain** _(diagnosed 2026-07-27, android-rssreader)_. `WriteSyncWorker` runs (WorkManager records `state=SUCCEEDED, run_attempt_count=1`) but the `pending_actions` table doesn't shrink — 42 rows queued at `02:38:05Z` were still present 16+ min later after multiple worker executions. Verified via device DB pull. Only three code paths return `Result.success()` from `doWork()`: (1) `tokenStore.getToken() == null` — early exit, queue untouched; (2) `pendingActionDao.all().isEmpty()` — early exit, queue untouched; (3) full loop with no transient errors — every action drained via `deleteIfUnchanged`. Since queue has rows and rows are unchanged, the worker must be taking path 1 or 2 every time. Auth token file exists (`auth_prefs.xml` unchanged since 2026-07-12, 90-day JWT still valid), so at rest `getToken()` should succeed. Leading hypothesis: `EncryptedSharedPreferences` returning null when accessed in a background-revived process where the master key isn't yet unlocked from Android Keystore. Needs live logcat during a fresh mark-read → worker cycle to confirm. **Hidden by the read-side sync** — as long as web activity mirrors what Android tries to push, incoming server state (paginated `refreshReadStatuses`, fixed 2026-07-27) papers over the missing write. **Breaks the moment there's a third client** (or any Android-only user), which is exactly what Phase D beta creates. Not urgent for Phase B, hard blocker for Phase D.
+
 ## Suggested execution order
 
 Phase A first (nothing else can start without it). B and C can be worked in parallel once A is stable, or serially if context-switching is expensive for a solo dev. D last.
