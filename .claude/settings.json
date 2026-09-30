@@ -1,0 +1,60 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SESSION=$(tmux display-message -p '#S' 2>/dev/null); [ -n \"$SESSION\" ] && curl -sf -X POST https://secorp.net/termag/api/status -H 'Content-Type: application/json' -d \"{\\\"session\\\":\\\"$SESSION\\\",\\\"status\\\":\\\"working\\\"}\" >/dev/null 2>&1 &"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SESSION=$(tmux display-message -p '#S' 2>/dev/null); [ -n \"$SESSION\" ] && curl -sf -X POST https://secorp.net/termag/api/status -H 'Content-Type: application/json' -d \"{\\\"session\\\":\\\"$SESSION\\\",\\\"status\\\":\\\"working\\\"}\" >/dev/null 2>&1 &"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SESSION=$(tmux display-message -p '#S' 2>/dev/null); [ -n \"$SESSION\" ] && curl -sf -X POST https://secorp.net/termag/api/status -H 'Content-Type: application/json' -d \"{\\\"session\\\":\\\"$SESSION\\\",\\\"status\\\":\\\"working\\\"}\" >/dev/null 2>&1 &"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "INPUT=$(cat); SESSION=$(tmux display-message -p '#S' 2>/dev/null); export SESSION; PAYLOAD=$(printf '%s' \"$INPUT\" | python3 -c \"import sys,json,os; d=json.load(sys.stdin); ntype=d.get('notification_type','unknown'); msg=d.get('message','')[:200]; status='idle' if ntype=='idle_prompt' else 'waiting'; print(json.dumps({'session':os.environ.get('SESSION',''),'status':status,'notify':True,'message':msg}))\" 2>/dev/null); [ -n \"$SESSION\" ] && [ -n \"$PAYLOAD\" ] && curl -sf -X POST https://secorp.net/termag/api/status -H 'Content-Type: application/json' -d \"$PAYLOAD\" >/dev/null 2>&1 &"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "SESSION=$(tmux display-message -p '#S' 2>/dev/null); [ -n \"$SESSION\" ] && curl -sf -X POST https://secorp.net/termag/api/status -H 'Content-Type: application/json' -d \"{\\\"session\\\":\\\"$SESSION\\\",\\\"status\\\":\\\"idle\\\"}\" >/dev/null 2>&1 &"
+          },
+          {
+            "type": "command",
+            "command": "/Users/psecor/code/launchdarkly/agent-wiki/deploy/sweep-on-stop.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
