@@ -4,7 +4,44 @@ import { updateFeed } from './rssFeedService';
 
 const prisma = new PrismaClient();
 
+// Per-user unread-item cap. Items beyond this are auto-marked read (oldest first)
+// at the end of each scheduler pass, so the backlog can never grow unboundedly.
+const UNREAD_CAP = 1000;
+
 let scheduledTask: cron.ScheduledTask | null = null;
+
+// Mark the oldest excess unread items read when a user is above UNREAD_CAP.
+// "Unread" matches the frontend definition: no ReadStatus row OR isRead=false.
+// We bump updatedAt explicitly on both insert and conflict so mobile delta-sync
+// picks the changes up (see AGENTS.md Gotcha #16).
+async function trimUnreadForUser(userId: number, cap: number): Promise<number> {
+  const [{ count }] = await prisma.$queryRaw<{ count: bigint }[]>`
+    SELECT COUNT(*)::bigint AS count
+    FROM "FeedItem" fi
+    JOIN "Feed" f ON fi."feedId" = f.id
+    LEFT JOIN "ReadStatus" rs ON rs."feedItemId" = fi.id AND rs."userId" = ${userId}
+    WHERE f."userId" = ${userId}
+      AND (rs.id IS NULL OR rs."isRead" = false)
+  `;
+  const unreadCount = Number(count);
+  if (unreadCount <= cap) return 0;
+  const toTrim = unreadCount - cap;
+
+  await prisma.$executeRaw`
+    INSERT INTO "ReadStatus" ("feedItemId", "userId", "isRead", "readAt", "updatedAt")
+    SELECT fi.id, ${userId}, true, NOW(), NOW()
+    FROM "FeedItem" fi
+    JOIN "Feed" f ON fi."feedId" = f.id
+    LEFT JOIN "ReadStatus" rs ON rs."feedItemId" = fi.id AND rs."userId" = ${userId}
+    WHERE f."userId" = ${userId}
+      AND (rs.id IS NULL OR rs."isRead" = false)
+    ORDER BY COALESCE(fi."pubDate", fi."createdAt") ASC
+    LIMIT ${toTrim}
+    ON CONFLICT ("feedItemId", "userId") DO UPDATE
+      SET "isRead" = true, "readAt" = NOW(), "updatedAt" = NOW()
+  `;
+  return toTrim;
+}
 
 export async function updateAllFeeds(): Promise<void> {
   console.log(`[${new Date().toISOString()}] Starting feed update job...`);
@@ -24,6 +61,18 @@ export async function updateAllFeeds(): Promise<void> {
         console.log(`✓ Successfully updated feed ${feed.title}. New items: ${result.newItemsCount}`);
       } else {
         console.error(`✗ Failed to update feed ${feed.title}: ${result.error}`);
+      }
+    }
+
+    const users = await prisma.user.findMany({ select: { id: true, email: true } });
+    for (const user of users) {
+      try {
+        const trimmed = await trimUnreadForUser(user.id, UNREAD_CAP);
+        if (trimmed > 0) {
+          console.log(`✓ Auto-marked ${trimmed} oldest unread items read for ${user.email} (cap=${UNREAD_CAP})`);
+        }
+      } catch (error) {
+        console.error(`✗ Failed to trim unread for ${user.email}:`, error);
       }
     }
 
