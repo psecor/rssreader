@@ -48,10 +48,6 @@
           {
             "type": "command",
             "command": "SESSION=$(tmux display-message -p '#S' 2>/dev/null); [ -n \"$SESSION\" ] && curl -sf -X POST https://secorp.net/termag/api/status -H 'Content-Type: application/json' -d \"{\\\"session\\\":\\\"$SESSION\\\",\\\"status\\\":\\\"idle\\\"}\" >/dev/null 2>&1 &"
-          },
-          {
-            "type": "command",
-            "command": "/Users/psecor/code/launchdarkly/agent-wiki/deploy/sweep-on-stop.sh"
           }
         ]
       }
