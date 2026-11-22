@@ -448,6 +448,7 @@ const ReaderPage: React.FC = () => {
             onItemUpdate={handleItemUpdate}
             visibleUnreadCount={feedItems.filter((i) => !i.isRead).length}
             totalUnreadCount={unreadCount}
+            unreadOnly={showUnreadOnly}
           />
         )}
       </div>

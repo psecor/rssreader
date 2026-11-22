@@ -448,8 +448,19 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 4rem 2rem;
+  padding: 2rem;
   color: #999;
+}
+
+.empty-title {
+  margin-top: 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #555;
+}
+
+.wireframe-head {
+  max-width: 100%;
 }
 
 .empty-subtitle {

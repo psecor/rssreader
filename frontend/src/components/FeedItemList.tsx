@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { FeedItem, Feed, Category } from '../types';
 import FeedItemCard from './FeedItemCard';
+import WireframeHead from './WireframeHead';
 import { readStatusApi } from '../services/api';
 
 interface FeedItemListProps {
@@ -11,6 +12,7 @@ interface FeedItemListProps {
   onItemUpdate: (patch?: { itemId: number; isRead: boolean }) => void;
   visibleUnreadCount: number;
   totalUnreadCount: number;
+  unreadOnly: boolean;
 }
 
 const FeedItemList: React.FC<FeedItemListProps> = ({
@@ -21,6 +23,7 @@ const FeedItemList: React.FC<FeedItemListProps> = ({
   onItemUpdate,
   visibleUnreadCount,
   totalUnreadCount,
+  unreadOnly,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const savedScrollPosition = useRef<number>(0);
@@ -101,11 +104,14 @@ const FeedItemList: React.FC<FeedItemListProps> = ({
         <div className="loading">Loading...</div>
       ) : items.length === 0 ? (
         <div className="empty-state">
-          <p>No articles found</p>
+          <WireframeHead />
+          <p className="empty-title">{unreadOnly ? 'All caught up' : 'No articles found'}</p>
           <p className="empty-subtitle">
-            {selectedFeed || selectedCategory
-              ? 'This feed has no articles yet'
-              : 'Add a feed to start reading'}
+            {unreadOnly
+              ? 'No unread items here.'
+              : selectedFeed || selectedCategory
+                ? 'This feed has no articles yet'
+                : 'Add a feed to start reading'}
           </p>
         </div>
       ) : (
