@@ -257,5 +257,13 @@ No webhooks, no socket.io, no external integrations beyond Google OAuth and inbo
 **Topics:** none yet.
 
 <!-- agent-wiki:backlinks-start -->
-- [rssreader-ios](../rssreader-ios/AGENTS.md) — What This Is, Related
+- [colonization-cargo-tracker](../colonization-cargo-tracker/AGENTS.md) — Related
+- [donno-site](../donno-site/AGENTS.md) — Related
+- [indicators-of-econ](../indicators-of-econ/AGENTS.md) — Related
+- [interesting-opportunity-collator](../interesting-opportunity-collator/AGENTS.md) — Related
+- [meeting-slack-app](../meeting-slack-app/AGENTS.md) — Related
+- [mommo-site](../mommo-site/AGENTS.md) — Related
+- [opportunities](../opportunities/AGENTS.md) — Related
+- [twilio-talker](../twilio-talker/AGENTS.md) — Related
+- [typing-lag](../typing-lag/AGENTS.md) — Related
 <!-- agent-wiki:backlinks-end -->
