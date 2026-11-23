@@ -9,6 +9,16 @@
     <link rel="alternate icon" type="image/png" href="%PUBLIC_URL%/favicon.png" />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/apple-touch-icon.png" />
     <title>RSS Reader</title>
+    <script>
+      // Apply the saved theme before first paint; keep in sync with src/theme.ts.
+      (function () {
+        try {
+          var pref = localStorage.getItem('rssreader.theme');
+          var dark = pref === 'dark' || (pref !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Sidebar from '../components/Sidebar';
 import FeedItemList from '../components/FeedItemList';
+import SettingsMenu from '../components/SettingsMenu';
 import AddFeedModal from '../components/AddFeedModal';
 import AddCategoryModal from '../components/AddCategoryModal';
 import EditFeedModal from '../components/EditFeedModal';
@@ -399,6 +400,7 @@ const ReaderPage: React.FC = () => {
           </div>
         )}
         <div className="user-menu">
+          <SettingsMenu />
           <span className="user-name">{user?.name || user?.email}</span>
           <button onClick={handleLogout} className="logout-button">
             Logout

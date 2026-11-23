@@ -4,8 +4,6 @@ import React, { useEffect, useRef } from 'react';
 
 const DEPTH_BANDS = 6;
 const DETAIL_BANDS = 3;
-const LINE_RGB = '102,126,234'; // #667eea, the app accent
-const DOT_RGB = '51,51,51';
 const NEURON_RGB = ['255,95,109', '91,227,154', '95,174,255'];
 
 const POINT_COUNT = 2200;
@@ -238,15 +236,35 @@ function depthAlpha(band: number): number {
 
 const buckets = (count: number): number[][] => Array.from({ length: count }, () => []);
 
-function drawFrame(ctx: CanvasRenderingContext2D, size: number, m: HeadModel, yaw: number, pitch: number) {
+interface HeadColours {
+  line: string; // "r, g, b"
+  dot: string;
+}
+
+function readColours(el: Element): HeadColours {
+  const style = getComputedStyle(el);
+  return {
+    line: style.getPropertyValue('--head-line-rgb').trim() || '102, 126, 234',
+    dot: style.getPropertyValue('--head-dot-rgb').trim() || '51, 51, 51',
+  };
+}
+
+function drawFrame(
+  ctx: CanvasRenderingContext2D,
+  size: number,
+  m: HeadModel,
+  colours: HeadColours,
+  yaw: number,
+  pitch: number,
+) {
   ctx.clearRect(0, 0, size, size);
   const scale = size * 0.34;
   const cx = size / 2;
   const cy = size / 2 - scale * 0.1;
 
   const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, scale * 1.6);
-  halo.addColorStop(0, `rgba(${LINE_RGB},0.14)`);
-  halo.addColorStop(1, `rgba(${LINE_RGB},0)`);
+  halo.addColorStop(0, `rgba(${colours.line},0.14)`);
+  halo.addColorStop(1, `rgba(${colours.line},0)`);
   ctx.fillStyle = halo;
   ctx.fillRect(0, 0, size, size);
 
@@ -314,9 +332,9 @@ function drawFrame(ctx: CanvasRenderingContext2D, size: number, m: HeadModel, ya
     const da = depthAlpha(depth);
     for (let det = 0; det < DETAIL_BANDS; det++) {
       const alpha = da * (0.35 + (0.65 * (det + 0.5)) / DETAIL_BANDS);
-      strokeEdges(lineB[depth * DETAIL_BANDS + det], `rgba(${LINE_RGB},${alpha})`, 1);
+      strokeEdges(lineB[depth * DETAIL_BANDS + det], `rgba(${colours.line},${alpha})`, 1);
     }
-    fillDots(dotB[depth], `rgba(${DOT_RGB},${da * 0.95})`, 1.1);
+    fillDots(dotB[depth], `rgba(${colours.dot},${da * 0.95})`, 1.1);
   }
 
   for (let depth = 0; depth < DEPTH_BANDS; depth++) {
@@ -354,18 +372,30 @@ const WireframeHead: React.FC<WireframeHeadProps> = ({ size = 320 }) => {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const model = getModel();
+    let colours = readColours(canvas);
     const render = (t: number) =>
-      drawFrame(ctx, size, model, -1.62 + 0.8 * sway(t, 9000), -0.06 + 0.12 * sway(t, 6500));
+      drawFrame(ctx, size, model, colours, -1.62 + 0.8 * sway(t, 9000), -0.06 + 0.12 * sway(t, 6500));
 
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      render(9000 * 0.5);
-      return;
-    }
-    let frame = requestAnimationFrame(function loop(t) {
-      render(t);
-      frame = requestAnimationFrame(loop);
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const themeObserver = new MutationObserver(() => {
+      colours = readColours(canvas);
+      if (reducedMotion) render(4500);
     });
-    return () => cancelAnimationFrame(frame);
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+    let frame = 0;
+    if (reducedMotion) {
+      render(4500);
+    } else {
+      frame = requestAnimationFrame(function loop(t) {
+        render(t);
+        frame = requestAnimationFrame(loop);
+      });
+    }
+    return () => {
+      cancelAnimationFrame(frame);
+      themeObserver.disconnect();
+    };
   }, [size]);
 
   return (
