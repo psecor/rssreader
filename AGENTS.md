@@ -1,8 +1,8 @@
 ---
 project: rssreader
 status: production
-status_description: "Self-hosted Google-OAuth-gated RSS reader for a small allowlist of users; feature-stable, open-sourced 2026-05, and as of 2026-06 also exposes a bearer-token auth path for a mobile client alongside the browser session flow."
-last_updated: 2026-07-29
+status_description: "Self-hosted Google-OAuth-gated RSS reader for a small allowlist of users; feature-stable with a mobile bearer-auth path (2026-06), auto-trimmed unread backlog and dark-mode support (2026-11)."
+last_updated: 2026-11-26
 last_updated_by:
   - agent:claude-opus-4-7
   - human:secorp
@@ -42,7 +42,8 @@ rssreader/
 │   │   │   └── history.ts         /api/history + /api/history/stats
 │   │   ├── services/
 │   │   │   ├── rssFeedService.ts  Parses RSS XML, saves items, extracts thumbnails
-│   │   │   ├── feedSchedulerService.ts  node-cron every 15 minutes
+│   │   │   ├── feedSchedulerService.ts  node-cron every 15 minutes; also trims the
+│   │   │   │                      unread backlog to the 1000 oldest-first per user (see Gotchas)
 │   │   │   ├── googleVerify.ts    Verifies Google ID tokens from the mobile client
 │   │   │   └── jwtService.ts      Issues/verifies app JWTs for the bearer flow
 │   │   └── types/                 express.d.ts, connect-pg-simple.d.ts
@@ -53,14 +54,19 @@ rssreader/
 ├── frontend/                       React 18 + TypeScript SPA (CRA)
 │   ├── src/
 │   │   ├── App.tsx                BrowserRouter basename="/rssreader"
-│   │   ├── App.css                All styles (single global CSS file)
+│   │   ├── App.css                All styles (single global CSS file); theme-aware via CSS vars
+│   │   ├── theme.ts               Auto/Light/Dark theme system: resolves preference, applies
+│   │   │                          data-theme attribute, listens to prefers-color-scheme
+│   │   ├── index.tsx              Entry; bootstraps theme before React renders
 │   │   ├── pages/                 LoginPage, ReaderPage (main UI)
 │   │   ├── components/            Sidebar, FeedItemList, FeedItemCard, IndexView,
-│   │   │                          HistoryView, AddFeedModal, AddCategoryModal, EditFeedModal
+│   │   │                          HistoryView, AddFeedModal, AddCategoryModal, EditFeedModal,
+│   │   │                          SettingsMenu (theme picker), WireframeHead (3D empty-state)
 │   │   ├── contexts/AuthContext.tsx  useAuth() hook
 │   │   ├── services/api.ts        Axios + all API functions
 │   │   └── types/index.ts         All data types
 │   ├── public/index.html          Uses %PUBLIC_URL% for asset paths (important!)
+│   ├── public/favicon.svg         RSS-icon favicon
 │   ├── .env.production            REACT_APP_API_URL=/rssreader
 │   └── package.json               homepage: "/rssreader" — critical; depends on dompurify
 ├── rss-reader-apache.conf          Apache vhost template (placeholders to fill)
@@ -204,6 +210,8 @@ curl -X POST http://127.0.0.1:3003/api/feeds/:id/refresh
 
 The scheduler refreshes all feeds every 15 minutes (`feedSchedulerService.ts`, node-cron). Failures are recorded in `Feed.lastFetchError` and surface in the UI.
 
+On each scheduler pass, after fetching, the scheduler also trims each user's unread backlog to the 1000 oldest-first items: anything beyond that is marked read automatically. This keeps the unread list bounded for users who subscribe to high-volume feeds and stop reading for a while. The trim is intentional — if a user reports "items disappeared from unread", this is the most likely cause. See Gotchas.
+
 ## Integration Surfaces
 
 URL parameter navigation — ReaderPage syncs view state to URL params:
@@ -251,6 +259,12 @@ No webhooks, no socket.io, no external integrations beyond Google OAuth and inbo
 12. **RSS HTML must be sanitized with DOMPurify** — feed item bodies are arbitrary third-party HTML and are rendered via `dangerouslySetInnerHTML` in `FeedItemCard` (notably inside the lightbox). All such HTML must pass through DOMPurify first. A 2026-05 XSS fix added this; do not remove the sanitization step or render raw `description`/content fields directly. If adding new surfaces that render feed HTML (e.g. preview tooltips, summaries), sanitize there too.
 
 13. **Dual auth flows must stay in parity** — any new `/api/*` route that browser clients can hit must also accept the mobile bearer JWT (compose `ensureAuthenticated` with `bearerAuth`), and vice versa. The allowlist check (`ALLOWED_EMAILS`) lives in two places — `middleware/passport.ts` for the session flow and `services/googleVerify.ts` for the bearer flow — and both must be updated together if the allowlist semantics change. Likewise, revoking access means the user has to be removed from `ALLOWED_EMAILS` *and* any outstanding mobile JWT has to expire or be rotated; there is no server-side JWT revocation list.
+
+14. **Scheduler auto-trims the unread backlog to 1000 per user** — `feedSchedulerService.ts` runs every 15 minutes and, after fetching, marks as read any unread items beyond the 1000 oldest-first per user. This is intentional (bounds the unread list for high-volume feeds) but surprises users who expect unread to be a strict record of what they haven't seen. If you change the cap, change it here and document it; if you add bulk-write code paths that touch `ReadStatus`, remember they also need to bump `updatedAt` for mobile delta sync (see Data & Schema).
+
+15. **Theme is resolved before React renders** — `frontend/src/index.tsx` bootstraps `theme.ts` (which sets a `data-theme` attribute on `<html>`) before mounting the React tree, to avoid a light→dark flash. `App.css` keys all theme-sensitive colors off CSS variables scoped to `[data-theme="light"]` / `[data-theme="dark"]`. When adding new colors, add them to the variable set in both themes rather than hardcoding — Auto mode (`prefers-color-scheme` listener) depends on the variable indirection to switch live. The user's choice (Auto/Light/Dark) is persisted in `localStorage` and surfaced via `SettingsMenu`.
+
+16. **Empty-state `WireframeHead` is a canvas animation** — the rotating 3D head shown when a view has no items (`components/WireframeHead.tsx`, ported from the Android app) runs its own requestAnimationFrame loop and accepts drag-to-spin with momentum, returning to a sway. It's heavy enough to matter on mobile: don't mount multiple instances, and tear down the RAF loop on unmount. If you repurpose it outside the empty state, verify it pauses when offscreen.
 
 ## Related
 
