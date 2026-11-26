@@ -355,6 +355,24 @@ function sway(t: number, periodMs: number): number {
   return 0.5 - 0.5 * Math.cos(Math.PI * tri);
 }
 
+const autoYaw = (t: number) => -1.62 + 0.8 * sway(t, 9000);
+const autoPitch = (t: number) => -0.06 + 0.12 * sway(t, 6500);
+const wrapAngle = (a: number) => a - 2 * Math.PI * Math.round(a / (2 * Math.PI));
+
+const DRAG_RAD_PER_PX = 0.012;
+const PITCH_LIMIT = 0.7;
+const MAX_SPIN = 12; // rad/s
+const FRICTION = 2.5; // per second
+const RETURN_RATE = 1.8; // per second
+const IDLE_BEFORE_RETURN_MS = 1500;
+
+const clampPitch = (p: number) => Math.max(-PITCH_LIMIT, Math.min(PITCH_LIMIT, p));
+const clampSpin = (v: number) => Math.max(-MAX_SPIN, Math.min(MAX_SPIN, v));
+
+// auto: idle sway · drag: following the pointer · coast: spinning down after release
+// return: easing back into the sway · held: left where dropped (reduced motion)
+type Mode = 'auto' | 'drag' | 'coast' | 'return' | 'held';
+
 interface WireframeHeadProps {
   size?: number;
 }
@@ -373,28 +391,108 @@ const WireframeHead: React.FC<WireframeHeadProps> = ({ size = 320 }) => {
 
     const model = getModel();
     let colours = readColours(canvas);
-    const render = (t: number) =>
-      drawFrame(ctx, size, model, colours, -1.62 + 0.8 * sway(t, 9000), -0.06 + 0.12 * sway(t, 6500));
-
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const t0 = reducedMotion ? 4500 : performance.now();
+    let yaw = autoYaw(t0);
+    let pitch = autoPitch(t0);
+    let vYaw = 0;
+    let vPitch = 0;
+    let mode: Mode = 'auto';
+    let releasedAt = 0;
+    let lastX = 0;
+    let lastY = 0;
+    let lastMoveAt = 0;
+
+    const draw = () => drawFrame(ctx, size, model, colours, yaw, pitch);
+
+    const step = (t: number, dt: number) => {
+      if (mode === 'auto') {
+        yaw = autoYaw(t);
+        pitch = autoPitch(t);
+      } else if (mode === 'coast') {
+        yaw += vYaw * dt;
+        pitch = clampPitch(pitch + vPitch * dt);
+        const decay = Math.exp(-FRICTION * dt);
+        vYaw *= decay;
+        vPitch *= decay;
+        if (t - releasedAt > IDLE_BEFORE_RETURN_MS && Math.abs(vYaw) < 0.05) mode = 'return';
+      } else if (mode === 'return') {
+        const k = 1 - Math.exp(-RETURN_RATE * dt);
+        const dYaw = wrapAngle(autoYaw(t) - yaw);
+        const dPitch = autoPitch(t) - pitch;
+        yaw += dYaw * k;
+        pitch += dPitch * k;
+        if (Math.abs(dYaw) < 0.003 && Math.abs(dPitch) < 0.003) mode = 'auto';
+      }
+    };
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      canvas.setPointerCapture(e.pointerId);
+      canvas.classList.add('dragging');
+      mode = 'drag';
+      vYaw = 0;
+      vPitch = 0;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      lastMoveAt = e.timeStamp;
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      if (mode !== 'drag') return;
+      const dYaw = (e.clientX - lastX) * DRAG_RAD_PER_PX;
+      const dPitch = (e.clientY - lastY) * DRAG_RAD_PER_PX;
+      const dt = Math.max(1, e.timeStamp - lastMoveAt) / 1000;
+      yaw += dYaw;
+      pitch = clampPitch(pitch + dPitch);
+      vYaw = clampSpin(0.8 * (dYaw / dt) + 0.2 * vYaw);
+      vPitch = clampSpin(0.8 * (dPitch / dt) + 0.2 * vPitch);
+      lastX = e.clientX;
+      lastY = e.clientY;
+      lastMoveAt = e.timeStamp;
+      if (reducedMotion) draw();
+    };
+    const onPointerUp = (e: PointerEvent) => {
+      if (mode !== 'drag') return;
+      canvas.classList.remove('dragging');
+      // A pause before letting go means "put it down", not "fling it".
+      if (e.timeStamp - lastMoveAt > 100) {
+        vYaw = 0;
+        vPitch = 0;
+      }
+      releasedAt = performance.now();
+      mode = reducedMotion ? 'held' : 'coast';
+    };
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointercancel', onPointerUp);
+
     const themeObserver = new MutationObserver(() => {
       colours = readColours(canvas);
-      if (reducedMotion) render(4500);
+      if (reducedMotion) draw();
     });
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
     let frame = 0;
     if (reducedMotion) {
-      render(4500);
+      draw();
     } else {
+      let last = performance.now();
       frame = requestAnimationFrame(function loop(t) {
-        render(t);
+        step(t, Math.min(0.05, Math.max(0, (t - last) / 1000)));
+        last = t;
+        draw();
         frame = requestAnimationFrame(loop);
       });
     }
     return () => {
       cancelAnimationFrame(frame);
       themeObserver.disconnect();
+      canvas.removeEventListener('pointerdown', onPointerDown);
+      canvas.removeEventListener('pointermove', onPointerMove);
+      canvas.removeEventListener('pointerup', onPointerUp);
+      canvas.removeEventListener('pointercancel', onPointerUp);
     };
   }, [size]);
 
@@ -403,6 +501,7 @@ const WireframeHead: React.FC<WireframeHeadProps> = ({ size = 320 }) => {
       ref={canvasRef}
       className="wireframe-head"
       style={{ width: size, height: size }}
+      title="Drag to spin"
       aria-hidden="true"
     />
   );

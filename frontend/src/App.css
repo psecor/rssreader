@@ -517,6 +517,13 @@ body {
 
 .wireframe-head {
   max-width: 100%;
+  cursor: grab;
+  /* Let a touch drag spin the head instead of scrolling the list. */
+  touch-action: none;
+}
+
+.wireframe-head.dragging {
+  cursor: grabbing;
 }
 
 .empty-subtitle {
