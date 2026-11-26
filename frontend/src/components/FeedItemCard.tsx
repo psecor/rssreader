@@ -14,6 +14,15 @@ interface FeedItemCardProps {
 
 const SWIPE_THRESHOLD = 80;
 
+// Feed HTML is untrusted. On top of DOMPurify's defaults (no scripts, event
+// handlers or javascript: URLs), drop styling that could restyle or overlay the
+// app and form controls that could fake a login prompt.
+const FEED_HTML_SANITIZE_CONFIG = {
+  USE_PROFILES: { html: true },
+  FORBID_TAGS: ['style', 'form', 'input', 'button', 'textarea', 'select', 'option'],
+  FORBID_ATTR: ['style'],
+};
+
 const FeedItemCard: React.FC<FeedItemCardProps> = ({ item, onUpdate }) => {
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
@@ -136,7 +145,7 @@ const FeedItemCard: React.FC<FeedItemCardProps> = ({ item, onUpdate }) => {
   };
 
   const sanitizedHtml = useMemo(
-    () => item.contentHtml ? DOMPurify.sanitize(item.contentHtml, { USE_PROFILES: { html: true } }) : '',
+    () => (item.contentHtml ? DOMPurify.sanitize(item.contentHtml, FEED_HTML_SANITIZE_CONFIG) : ''),
     [item.contentHtml]
   );
 
@@ -234,6 +243,7 @@ const FeedItemCard: React.FC<FeedItemCardProps> = ({ item, onUpdate }) => {
             {item.contentHtml ? (
               <div
                 className="lightbox-html-content"
+                // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml -- DOMPurify-sanitized above
                 dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
               />
             ) : item.description ? (

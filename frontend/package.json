@@ -9,7 +9,7 @@
     "@types/react": "^18.2.46",
     "@types/react-dom": "^18.2.18",
     "axios": "^1.6.5",
-    "dompurify": "^3.4.2",
+    "dompurify": "^3.5.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.21.1",
